@@ -86,16 +86,16 @@ export async function actualizarProductoAction(
   }
 }
 
-export async function cerrarCasoAction(casoId: number, comentarioCierre?: string) {
+export async function cerrarCasoAction(casoId: number, cerradoPor: string, comentarioCierre?: string) {
   try {
     const supabase = createSupabaseServerClient()
     const fechaCierre = new Date().toISOString().slice(0, 19).replace("T", " ")
-    
+
     const { data, error } = await supabase
       .from("seguimiento_casos")
       .update({
         estado: "CERRADO",
-        cerrado_por: "Usuario Actual",
+        cerrado_por: cerradoPor,
         fecha_cierre: fechaCierre,
         comentario_cierre: comentarioCierre || null,
       })

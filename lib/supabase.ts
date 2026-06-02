@@ -22,7 +22,7 @@ function getSupabaseClient() {
 }
 
 // Proxy object so that `supabase.from(...)` always resolves lazily
-const supabaseProxy = new Proxy({} as ReturnType<typeof createBrowserClient>, {
+const supabaseProxy = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
   get(_target, prop) {
     const client = getSupabaseClient()
     if (!client) throw new Error("Supabase client no disponible. Verifica NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.")

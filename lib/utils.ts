@@ -13,12 +13,21 @@ export function cn(...inputs: ClassValue[]) {
 export function formatDateDMY(dateString: string | null | undefined): string {
   if (!dateString) return "N/A"
   try {
-    const date = new Date(dateString)
+    const parts = String(dateString).split("-")
+    let date: Date
+    if (parts.length === 3 && parts[0].length === 4) {
+      const year = parseInt(parts[0], 10)
+      const month = parseInt(parts[1], 10)
+      const day = parseInt(parts[2], 10)
+      date = new Date(Date.UTC(year, month - 1, day))
+    } else {
+      date = new Date(dateString)
+    }
     if (isNaN(date.getTime())) return "N/A"
-    const day = date.getDate().toString().padStart(2, "0")
+    const day = date.getUTCDate().toString().padStart(2, "0")
     const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-    const month = months[date.getMonth()]
-    const year = date.getFullYear()
+    const month = months[date.getUTCMonth()]
+    const year = date.getUTCFullYear()
     return `${day}-${month}-${year}`
   } catch {
     return "N/A"

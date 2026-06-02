@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { cerrarCasoAction } from "@/app/actions/crm-actions"
 import { useToast } from "@/hooks/use-toast"
+import { useUser } from "@/lib/user-context"
 
 interface SeguimientoCaso {
   id: number
@@ -165,6 +166,7 @@ export default function CRMCasosPage() {
   })
 
   const { toast } = useToast()
+  const { user } = useUser()
 
   const cargarCasos = async () => {
     try {
@@ -277,7 +279,7 @@ export default function CRMCasosPage() {
           id: Math.max(...casos.map((c) => c.id), 0) + 1,
           ...nuevoCaso,
           estado: "ABIERTO",
-          creado_por: "Usuario Actual",
+          creado_por: user?.nombre ?? user?.email ?? "Desconocido",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
@@ -293,7 +295,7 @@ export default function CRMCasosPage() {
             {
               ...nuevoCaso,
               estado: "ABIERTO",
-              creado_por: "Usuario Actual",
+              creado_por: user?.nombre ?? user?.email ?? "Desconocido",
             },
           ])
           .select()
@@ -345,7 +347,7 @@ export default function CRMCasosPage() {
           id: Math.max(...comentarios.map((c) => c.id), 0) + 1,
           caso_id: casoSeleccionado.id,
           ...nuevoComentario,
-          usuario: "Usuario Actual",
+          usuario: user?.nombre ?? user?.email ?? "Desconocido",
           created_at: new Date().toISOString(),
         }
         setComentarios([comentarioCompleto, ...comentarios])
@@ -360,7 +362,7 @@ export default function CRMCasosPage() {
             {
               caso_id: casoSeleccionado.id,
               ...nuevoComentario,
-              usuario: "Usuario Actual",
+              usuario: user?.nombre ?? user?.email ?? "Desconocido",
             },
           ])
           .select()
@@ -396,8 +398,9 @@ export default function CRMCasosPage() {
   }
 
   const handleCloseCaso = async (casoId: number) => {
+    const cerradoPor = user?.nombre ?? user?.email ?? "Desconocido"
     const fechaCierreLocal = new Date().toISOString()
-    const casoCerrado = { estado: "CERRADO" as const, cerrado_por: "Usuario Actual", fecha_cierre: fechaCierreLocal }
+    const casoCerrado = { estado: "CERRADO" as const, cerrado_por: cerradoPor, fecha_cierre: fechaCierreLocal }
     
     // Actualizar el array de casos
     setCasos(
@@ -420,7 +423,7 @@ export default function CRMCasosPage() {
 
     // Sincronizar con la base de datos usando Server Action
     try {
-      const result = await cerrarCasoAction(casoId, comentarioCierre || undefined)
+      const result = await cerrarCasoAction(casoId, cerradoPor, comentarioCierre || undefined)
       
       if (!result.success) {
         console.error("Error al cerrar caso en DB:", result.error)
