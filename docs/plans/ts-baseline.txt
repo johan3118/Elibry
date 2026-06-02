@@ -1,0 +1,292 @@
+app/admin/page.tsx(89,19): error TS18047: 'supabase' is possibly 'null'.
+app/admin/page.tsx(146,31): error TS18047: 'supabase' is possibly 'null'.
+app/admin/page.tsx(148,17): error TS2345: Argument of type '{ estado: string; fecha_procesamiento: string; usuario_procesamiento: string; notas_procesamiento: string | null; resultado_procesamiento: { exito: boolean; error?: string; data?: any; } | null; }' is not assignable to parameter of type 'never'.
+app/admin/page.tsx(208,35): error TS18047: 'supabase' is possibly 'null'.
+app/admin/page.tsx(208,80): error TS2322: Type 'any' is not assignable to type 'never'.
+app/admin/page.tsx(222,35): error TS18047: 'supabase' is possibly 'null'.
+app/admin/page.tsx(224,15): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+app/admin/page.tsx(240,35): error TS18047: 'supabase' is possibly 'null'.
+app/clientes/balance-reserva/page.tsx(90,27): error TS18047: 'supabase' is possibly 'null'.
+app/clientes/balance-reserva/page.tsx(107,60): error TS18047: 'supabase' is possibly 'null'.
+app/clientes/balance-reserva/page.tsx(124,66): error TS18047: 'supabase' is possibly 'null'.
+app/clientes/balance-reserva/page.tsx(134,68): error TS18047: 'supabase' is possibly 'null'.
+app/clientes/balance/page.tsx(68,70): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/clientes/balance/page.tsx(68,93): error TS2339: Property 'id' does not exist on type 'never'.
+app/clientes/balance/page.tsx(76,41): error TS2339: Property 'precio_total' does not exist on type 'never'.
+app/clientes/balance/page.tsx(77,42): error TS2339: Property 'abonado_contabilidad' does not exist on type 'never'.
+app/clientes/balance/page.tsx(78,94): error TS2339: Property 'id' does not exist on type 'never'.
+app/clientes/balance/page.tsx(82,24): error TS2339: Property 'moneda' does not exist on type 'never'.
+app/clientes/balance/page.tsx(88,40): error TS2339: Property 'atendido_por' does not exist on type 'never'.
+app/clientes/balance/page.tsx(88,77): error TS2339: Property 'atendido_por' does not exist on type 'never'.
+app/clientes/balance/page.tsx(89,46): error TS2339: Property 'referido_por' does not exist on type 'never'.
+app/clientes/balance/page.tsx(89,89): error TS2339: Property 'referido_por' does not exist on type 'never'.
+app/clientes/balance/page.tsx(96,57): error TS2339: Property 'fecha_creado' does not exist on type 'never'.
+app/clientes/balance/page.tsx(96,94): error TS2339: Property 'fecha_creado' does not exist on type 'never'.
+app/clientes/balance/page.tsx(97,18): error TS2339: Property 'fecha_creado' does not exist on type 'never'.
+app/clientes/balance/page.tsx(101,11): error TS2698: Spread types may only be created from object types.
+app/clientes/balance/page.tsx(107,26): error TS2339: Property 'compania' does not exist on type 'never'.
+app/clientes/balance/page.tsx(393,72): error TS2339: Property 'cedula_pasaporte' does not exist on type 'ClienteConBalance'.
+app/clientes/editar/page.tsx(83,84): error TS2345: Argument of type 'string | null' is not assignable to parameter of type '{}'.
+  Type 'null' is not assignable to type '{}'.
+app/clientes/editar/page.tsx(93,30): error TS2339: Property 'email' does not exist on type 'never'.
+app/clientes/editar/page.tsx(93,43): error TS2339: Property 'email' does not exist on type 'never'.
+app/clientes/editar/page.tsx(97,20): error TS2339: Property 'pais' does not exist on type 'never'.
+app/clientes/editar/page.tsx(103,16): error TS2339: Property 'tipo_cliente' does not exist on type 'never'.
+app/clientes/editar/page.tsx(103,50): error TS2339: Property 'identificacion' does not exist on type 'never'.
+app/clientes/editar/page.tsx(104,25): error TS2339: Property 'identificacion' does not exist on type 'never'.
+app/clientes/editar/page.tsx(115,28): error TS2339: Property 'tipo_cliente' does not exist on type 'never'.
+app/clientes/editar/page.tsx(116,24): error TS2339: Property 'compania' does not exist on type 'never'.
+app/clientes/editar/page.tsx(118,19): error TS2339: Property 'rnc' does not exist on type 'never'.
+app/clientes/editar/page.tsx(119,28): error TS2339: Property 'razon_social' does not exist on type 'never'.
+app/clientes/editar/page.tsx(120,32): error TS2339: Property 'nombre_comercial' does not exist on type 'never'.
+app/clientes/editar/page.tsx(121,27): error TS2339: Property 'responsable' does not exist on type 'never'.
+app/clientes/editar/page.tsx(123,30): error TS2339: Property 'identificacion' does not exist on type 'never'.
+app/clientes/editar/page.tsx(124,31): error TS2339: Property 'nombre_completo' does not exist on type 'never'.
+app/clientes/editar/page.tsx(125,20): error TS2339: Property 'sexo' does not exist on type 'never'.
+app/clientes/editar/page.tsx(126,32): error TS2339: Property 'fecha_nacimiento' does not exist on type 'never'.
+app/clientes/editar/page.tsx(128,25): error TS2339: Property 'telefonos' does not exist on type 'never'.
+app/clientes/editar/page.tsx(129,21): error TS2339: Property 'email' does not exist on type 'never'.
+app/clientes/editar/page.tsx(130,25): error TS2339: Property 'direccion' does not exist on type 'never'.
+app/clientes/editar/page.tsx(131,27): error TS2339: Property 'observacion' does not exist on type 'never'.
+app/clientes/editar/page.tsx(132,28): error TS2339: Property 'referido_por' does not exist on type 'never'.
+app/clientes/editar/page.tsx(133,22): error TS2339: Property 'status' does not exist on type 'never'.
+app/clientes/editar/page.tsx(392,33): error TS2339: Property 'estado_registro' does not exist on type 'Cliente'.
+app/clientes/editar/page.tsx(428,69): error TS2339: Property 'usuario_creacion' does not exist on type 'Cliente'.
+app/clientes/registrar/page.tsx(198,74): error TS2339: Property 'id' does not exist on type 'never'.
+app/clientes/registrar/page.tsx(203,13): error TS2322: Type '{ estado_registro: string; tipo_cliente: string; compania: string; rnc: string | null; razon_social: string | null; nombre_comercial: string | null; responsable: string | null; identificacion: string | null; ... 12 more ...; id: any; }' is not assignable to type 'never'.
+app/clientes/ver/page.tsx(31,84): error TS2345: Argument of type 'string | null' is not assignable to parameter of type '{}'.
+  Type 'null' is not assignable to type '{}'.
+app/crm/casos/page.tsx(295,13): error TS2322: Type '{ estado: string; creado_por: string; titulo: string; descripcion: string; email_distribuidor: string; nombre_distribuidor: string; empresa_distribuidor: string; telefono_distribuidor: string; prioridad: "MEDIA"; }' is not assignable to type 'never'.
+app/crm/casos/page.tsx(362,13): error TS2322: Type '{ usuario: string; tipo: "COMENTARIO"; comentario: string; caso_id: number; }' is not assignable to type 'never'.
+app/crm/page.tsx(64,18): error TS2339: Property 'estado' does not exist on type 'never'.
+app/crm/page.tsx(65,43): error TS2339: Property 'created_at' does not exist on type 'never'.
+app/crm/page.tsx(80,42): error TS2339: Property 'estado' does not exist on type 'never'.
+app/crm/page.tsx(81,43): error TS2339: Property 'estado' does not exist on type 'never'.
+app/crm/page.tsx(82,42): error TS2339: Property 'estado' does not exist on type 'never'.
+app/facturacion/fiscal/page.tsx(104,68): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/fiscal/page.tsx(115,68): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/fiscal/page.tsx(126,70): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/fiscal/page.tsx(137,68): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/fiscal/page.tsx(627,37): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/fiscal/page.tsx(627,84): error TS2322: Type 'Omit<FacturaFiscal, "id" | "fecha_creado">' is not assignable to type 'never'.
+app/facturacion/page.tsx(63,64): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/facturacion/page.tsx(77,53): error TS2339: Property 'id' does not exist on type 'never'.
+app/facturacion/page.tsx(77,68): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/facturacion/page.tsx(80,20): error TS2339: Property 'tipo_cliente' does not exist on type 'never'.
+app/facturacion/page.tsx(81,23): error TS2339: Property 'razon_social' does not exist on type 'never'.
+app/facturacion/page.tsx(82,24): error TS2339: Property 'nombre_completo' does not exist on type 'never'.
+app/facturacion/page.tsx(85,20): error TS2339: Property 'tipo_cliente' does not exist on type 'never'.
+app/facturacion/page.tsx(85,57): error TS2339: Property 'rnc' does not exist on type 'never'.
+app/facturacion/page.tsx(85,85): error TS2339: Property 'identificacion' does not exist on type 'never'.
+app/facturacion/page.tsx(88,41): error TS2339: Property 'precio_total' does not exist on type 'never'.
+app/facturacion/page.tsx(89,42): error TS2339: Property 'descuento' does not exist on type 'never'.
+app/facturacion/page.tsx(98,21): error TS2339: Property 'status' does not exist on type 'never'.
+app/facturacion/page.tsx(101,28): error TS2339: Property 'status' does not exist on type 'never'.
+app/facturacion/page.tsx(104,28): error TS2339: Property 'factura_url' does not exist on type 'never'.
+app/facturacion/page.tsx(112,27): error TS2339: Property 'codigo' does not exist on type 'never'.
+app/facturacion/page.tsx(115,35): error TS2339: Property 'fecha_creado' does not exist on type 'never'.
+app/facturacion/page.tsx(121,31): error TS2339: Property 'id' does not exist on type 'never'.
+app/facturacion/proforma/page.tsx(128,68): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/proforma/page.tsx(138,68): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/proforma/page.tsx(144,70): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/proforma/page.tsx(150,68): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/proforma/page.tsx(156,62): error TS18047: 'supabase' is possibly 'null'.
+app/facturacion/voucher/page.tsx(120,64): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/facturacion/voucher/page.tsx(121,65): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/facturacion/voucher/page.tsx(155,67): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/facturacion/voucher/page.tsx(156,69): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/facturacion/voucher/page.tsx(159,11): error TS2698: Spread types may only be created from object types.
+app/page.tsx(111,37): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(145,19): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(776,9): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(777,9): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(778,9): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(779,9): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(780,9): error TS18047: 'supabase' is possibly 'null'.
+app/page.tsx(781,9): error TS18047: 'supabase' is possibly 'null'.
+app/pagos/buscar/page.tsx(77,62): error TS18047: 'supabase' is possibly 'null'.
+app/pagos/buscar/page.tsx(84,68): error TS18047: 'supabase' is possibly 'null'.
+app/pagos/buscar/page.tsx(88,68): error TS18047: 'supabase' is possibly 'null'.
+app/pagos/buscar/page.tsx(92,70): error TS18047: 'supabase' is possibly 'null'.
+app/pagos/registrar/page.tsx(107,31): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(117,23): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(121,33): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(124,41): error TS2339: Property 'nombre_producto' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(131,9): error TS2698: Spread types may only be created from object types.
+app/pagos/registrar/page.tsx(138,33): error TS2339: Property 'id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(139,33): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(191,55): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(193,11): error TS7034: Variable 'productosData' implicitly has type 'any[]' in some locations where its type cannot be determined.
+app/pagos/registrar/page.tsx(208,11): error TS2698: Spread types may only be created from object types.
+app/pagos/registrar/page.tsx(209,21): error TS7005: Variable 'productosData' implicitly has an 'any[]' type.
+app/pagos/registrar/page.tsx(209,64): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/pagos/registrar/page.tsx(327,13): error TS2322: Type '{ estado_registro: string; reserva_id: number; cliente_id: number; monto: number; metodo_pago: string; referencia: string | null; fecha_pago: string; concepto: string; notas: string | null; estado: string; usuario: string; creado_en: string; }' is not assignable to type 'never'.
+app/pagos/ver/page.tsx(71,102): error TS2345: Argument of type 'string | null' is not assignable to parameter of type '{}'.
+  Type 'null' is not assignable to type '{}'.
+app/pagos/ver/page.tsx(84,28): error TS2339: Property 'reserva_id' does not exist on type 'never'.
+app/pagos/ver/page.tsx(91,25): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/pagos/ver/page.tsx(95,35): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/pagos/ver/page.tsx(108,28): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/productos/editar/page.tsx(151,30): error TS2339: Property 'telefonos_json' does not exist on type 'never'.
+app/productos/editar/page.tsx(152,27): error TS2339: Property 'emails_json' does not exist on type 'never'.
+app/productos/editar/page.tsx(156,16): error TS2339: Property 'contactos' does not exist on type 'never'.
+app/productos/editar/page.tsx(157,28): error TS2339: Property 'contactos' does not exist on type 'never'.
+app/productos/editar/page.tsx(164,22): error TS2339: Property 'codigo' does not exist on type 'never'.
+app/productos/editar/page.tsx(165,31): error TS2339: Property 'nombre_producto' does not exist on type 'never'.
+app/productos/editar/page.tsx(166,31): error TS2339: Property 'nombre_original' does not exist on type 'never'.
+app/productos/editar/page.tsx(167,20): error TS2339: Property 'tipo' does not exist on type 'never'.
+app/productos/editar/page.tsx(168,27): error TS2339: Property 'suplidor_id' does not exist on type 'never'.
+app/productos/editar/page.tsx(174,20): error TS2339: Property 'pais' does not exist on type 'never'.
+app/productos/editar/page.tsx(175,25): error TS2339: Property 'direccion' does not exist on type 'never'.
+app/productos/editar/page.tsx(176,27): error TS2339: Property 'comentarios' does not exist on type 'never'.
+app/productos/editar/page.tsx(177,22): error TS2339: Property 'status' does not exist on type 'never'.
+app/productos/editar/page.tsx(181,32): error TS2339: Property 'imagen_url' does not exist on type 'never'.
+app/productos/editar/page.tsx(182,31): error TS2339: Property 'documentos_urls' does not exist on type 'never'.
+app/productos/editar/page.tsx(304,19): error TS2345: Argument of type '{ estado_provisional: string; codigo: string | null; nombre_producto: string; nombre_original: string; tipo: string; suplidor_id: number | null; contactos: string; telefonos_json: string[] | null; ... 8 more ...; documentos_urls: string[] | null; }' is not assignable to parameter of type 'never'.
+app/productos/registrar/page.tsx(229,74): error TS2339: Property 'id' does not exist on type 'never'.
+app/productos/registrar/page.tsx(234,13): error TS2322: Type '{ estado_registro: string; codigo: null; nombre_producto: string; nombre_original: string; tipo: string; suplidor_id: number | null; contactos: string; telefonos_json: string[] | null; emails_json: string[] | null; ... 6 more ...; id: any; }' is not assignable to type 'never'.
+app/productos/ver/page.tsx(79,16): error TS2339: Property 'suplidor_id' does not exist on type 'never'.
+app/productos/ver/page.tsx(83,26): error TS2339: Property 'suplidor_id' does not exist on type 'never'.
+app/reservas/crear/page.tsx(138,68): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(149,70): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(160,72): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(170,78): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(414,68): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(417,13): error TS2322: Type '{ estado_registro: string; codigo: string; cliente_id: number; cedula_cliente: string | null; producto_id: number; referido_por: string | null; atendido_por: string; fecha_entrada: string | null; ... 28 more ...; fecha_editado: string; }' is not assignable to type 'never'.
+app/reservas/crear/page.tsx(431,37): error TS2339: Property 'id' does not exist on type 'never'.
+app/reservas/crear/page.tsx(448,48): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(448,89): error TS2345: Argument of type '{ reserva_id: any; concepto: string; descripcion: string | null; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; impuestos: number; total: number; noches: number; ... 4 more ...; estado_registro: string; }[]' is not assignable to parameter of type 'never[]'.
+  Type '{ reserva_id: any; concepto: string; descripcion: string | null; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; impuestos: number; total: number; noches: number; ... 4 more ...; estado_registro: string; }' is not assignable to type 'never'.
+app/reservas/crear/page.tsx(454,39): error TS2339: Property 'id' does not exist on type 'never'.
+app/reservas/crear/page.tsx(468,46): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/crear/page.tsx(468,77): error TS2322: Type '{ reserva_id: any; cliente_id: number; monto: number; metodo_pago: string; referencia: string | null; fecha_pago: string; concepto: string; notas: string; estado: string; usuario: string; creado_en: string; estado_registro: string; }' is not assignable to type 'never'.
+app/reservas/crear/page.tsx(474,49): error TS2339: Property 'codigo' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(135,66): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(152,43): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(160,68): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(183,37): error TS2339: Property 'habitaciones' does not exist on type 'ReservaDetalle'.
+app/reservas/editar/[id]/page.tsx(189,43): error TS2339: Property 'precio_total' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(190,48): error TS2339: Property 'descuento' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(199,36): error TS2339: Property 'pasajeros' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(200,39): error TS2339: Property 'habitaciones' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(205,68): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(216,70): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(227,72): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(238,81): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(240,39): error TS2339: Property 'nombre_completo' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(240,66): error TS2339: Property 'razon_social' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(241,34): error TS2339: Property 'identificacion' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(241,60): error TS2339: Property 'rnc' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(243,40): error TS2339: Property 'id' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(247,36): error TS2339: Property 'referido_por' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(248,38): error TS2339: Property 'cedula_cliente' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(249,32): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(250,36): error TS2339: Property 'hora_entrada' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(251,35): error TS2339: Property 'hora_salida' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(252,34): error TS2339: Property 'pasajeros' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(253,37): error TS2339: Property 'habitaciones' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(254,36): error TS2339: Property 'atendido_por' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(255,35): error TS2339: Property 'metodo_pago' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(256,44): error TS2339: Property 'abonado_contabilidad' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(257,34): error TS2339: Property 'proveedor' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(258,33): error TS2339: Property 'proforma' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(259,33): error TS2339: Property 'comision' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(260,46): error TS2339: Property 'factura_enviada_cliente' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(261,49): error TS2339: Property 'factura_recibida_proveedor' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(262,43): error TS2339: Property 'nota_interna_reserva' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(263,36): error TS2339: Property 'asientos_bus' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(264,30): error TS2339: Property 'grupo' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(265,31): error TS2339: Property 'moneda' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(266,31): error TS2339: Property 'status' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(270,25): error TS2339: Property 'fecha_entrada' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(271,48): error TS2339: Property 'fecha_entrada' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(273,25): error TS2339: Property 'fecha_salida' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(274,47): error TS2339: Property 'fecha_salida' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(276,25): error TS2339: Property 'fecha_limite_pago' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(277,51): error TS2339: Property 'fecha_limite_pago' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(279,25): error TS2339: Property 'fecha_gastos_proveedor' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(280,56): error TS2339: Property 'fecha_gastos_proveedor' does not exist on type 'never'.
+app/reservas/editar/[id]/page.tsx(506,47): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(508,19): error TS2345: Argument of type '{ estado_registro: string; cliente_id: number; cedula_cliente: string | null; producto_id: number; referido_por: string | null; atendido_por: string; fecha_entrada: string | null; fecha_salida: string | null; ... 26 more ...; fecha_editado: string; }' is not assignable to parameter of type 'never'.
+app/reservas/editar/[id]/page.tsx(519,46): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(544,48): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/editar/[id]/page.tsx(544,89): error TS2345: Argument of type '{ reserva_id: number; concepto: string; descripcion: string | null; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; impuestos: number; total: number; noches: number; ... 4 more ...; estado_registro: string; }[]' is not assignable to parameter of type 'never[]'.
+  Type '{ reserva_id: number; concepto: string; descripcion: string | null; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; impuestos: number; total: number; noches: number; ... 4 more ...; estado_registro: string; }' is not assignable to type 'never'.
+app/reservas/editar/[id]/page.tsx(551,13): error TS2322: Type '"warning"' is not assignable to type '"default" | "destructive" | null | undefined'.
+app/reservas/pendientes/page.tsx(242,23): error TS2339: Property 'tipo_cliente' does not exist on type 'never'.
+app/reservas/pendientes/page.tsx(242,60): error TS2339: Property 'razon_social' does not exist on type 'never'.
+app/reservas/pendientes/page.tsx(242,89): error TS2339: Property 'nombre_completo' does not exist on type 'never'.
+app/reservas/pendientes/page.tsx(390,7): error TS2322: Type 'string | boolean' is not assignable to type 'boolean'.
+  Type 'string' is not assignable to type 'boolean'.
+app/reservas/pendientes/page.tsx(396,7): error TS2322: Type 'string | boolean | null' is not assignable to type 'boolean'.
+  Type 'null' is not assignable to type 'boolean'.
+app/reservas/pendientes/page.tsx(464,9): error TS2353: Object literal may only specify known properties, and 'reserva_id' does not exist in type 'never[]'.
+app/reservas/pendientes/page.tsx(480,17): error TS2345: Argument of type '{ balance_general: number; balance_abonado: number; }' is not assignable to parameter of type 'never'.
+app/reservas/seguimiento/page.tsx(251,13): error TS2322: Type '{ estado: string; creado_por: string; titulo: string; descripcion: string; email_distribuidor: string; nombre_distribuidor: string; empresa_distribuidor: string; telefono_distribuidor: string; prioridad: "MEDIA"; }' is not assignable to type 'never'.
+app/reservas/seguimiento/page.tsx(321,13): error TS2322: Type '{ usuario: string; tipo: "COMENTARIO"; comentario: string; caso_id: number; }' is not assignable to type 'never'.
+app/reservas/seguimiento/page.tsx(384,19): error TS2345: Argument of type '{ estado: string; cerrado_por: string; fecha_cierre: string; }' is not assignable to parameter of type 'never'.
+app/reservas/ver/[id]/page.tsx(150,66): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/ver/[id]/page.tsx(161,62): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/ver/[id]/page.tsx(171,59): error TS2339: Property 'precio_total' does not exist on type 'never'.
+app/reservas/ver/[id]/page.tsx(173,47): error TS2339: Property 'monto' does not exist on type 'never'.
+app/reservas/ver/[id]/page.tsx(176,71): error TS2339: Property 'abonado_contabilidad' does not exist on type 'never'.
+app/reservas/ver/[id]/page.tsx(180,11): error TS2698: Spread types may only be created from object types.
+app/reservas/ver/[id]/page.tsx(190,31): error TS2339: Property 'status' does not exist on type 'never'.
+app/reservas/ver/[id]/page.tsx(197,66): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/ver/[id]/page.tsx(200,33): error TS2339: Property 'cliente_id' does not exist on type 'never'.
+app/reservas/ver/[id]/page.tsx(208,68): error TS18047: 'supabase' is possibly 'null'.
+app/reservas/ver/[id]/page.tsx(211,33): error TS2339: Property 'producto_id' does not exist on type 'never'.
+app/reservas/ver/[id]/page.tsx(219,68): error TS18047: 'supabase' is possibly 'null'.
+app/suplidores/editar/page.tsx(80,86): error TS2345: Argument of type 'string | null' is not assignable to parameter of type '{}'.
+  Type 'null' is not assignable to type '{}'.
+app/suplidores/editar/page.tsx(89,28): error TS2339: Property 'razon_social' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(90,32): error TS2339: Property 'nombre_comercial' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(91,30): error TS2339: Property 'identificacion' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(92,34): error TS2339: Property 'nombre_responsable' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(93,36): error TS2339: Property 'telefono_responsable' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(94,20): error TS2339: Property 'pais' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(95,25): error TS2339: Property 'direccion' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(96,21): error TS2339: Property 'email' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(97,27): error TS2339: Property 'observacion' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(98,22): error TS2339: Property 'status' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(100,25): error TS2339: Property 'telefonos' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(100,43): error TS2339: Property 'telefonos' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(100,71): error TS2339: Property 'telefonos' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(100,89): error TS2339: Property 'telefono_responsable' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(101,22): error TS2339: Property 'emails' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(101,37): error TS2339: Property 'emails' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(101,62): error TS2339: Property 'emails' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(101,77): error TS2339: Property 'email' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(102,32): error TS2339: Property 'imagen_url' does not exist on type 'never'.
+app/suplidores/editar/page.tsx(103,31): error TS2339: Property 'documentos_urls' does not exist on type 'never'.
+app/suplidores/ver/page.tsx(51,86): error TS2345: Argument of type 'string | null' is not assignable to parameter of type '{}'.
+  Type 'null' is not assignable to type '{}'.
+lib/admin-actions.ts(20,35): error TS18047: 'supabase' is possibly 'null'.
+lib/admin-actions.ts(23,9): error TS2322: Type '{ tipo_accion: "DELETE" | "CREATE" | "UPDATE"; modulo: string; tabla_objetivo: string; registro_id: number | undefined; datos_nuevos: any; datos_anteriores: any; descripcion: string; usuario_solicitante: string; estado: string; fecha_solicitud: string; }' is not assignable to type 'never'.
+lib/admin-actions.ts(44,38): error TS2339: Property 'id' does not exist on type 'never'.
+lib/provisional-system.ts(51,82): error TS2322: Type '{ tabla_afectada: string; registro_id: number; tipo_cambio: "DELETE" | "CREATE" | "UPDATE"; datos_anteriores: any; datos_nuevos: any; usuario_cambio: string; dependencias: any[]; dependientes: any[]; estado_cambio: string; fecha_cambio: string; }' is not assignable to type 'never'.
+lib/provisional-system.ts(58,38): error TS2339: Property 'id' does not exist on type 'never'.
+lib/provisional-system.ts(138,70): error TS2339: Property 'id' does not exist on type 'never'.
+lib/provisional-system.ts(150,80): error TS2322: Type 'any' is not assignable to type 'never'.
+lib/provisional-system.ts(161,37): error TS2339: Property 'id' does not exist on type 'never'.
+lib/provisional-system.ts(209,15): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+lib/provisional-system.ts(251,15): error TS2345: Argument of type '{ estado_registro: string; usuario_creacion: string; fecha_provisional: string; }' is not assignable to parameter of type 'never'.
+lib/provisional-system.ts(303,61): error TS7006: Parameter 'r' implicitly has an 'any' type.
+lib/provisional-system.ts(303,101): error TS7006: Parameter 'r' implicitly has an 'any' type.
+lib/provisional-system.ts(342,20): error TS2339: Property 'tabla_afectada' does not exist on type 'never'.
+lib/provisional-system.ts(343,15): error TS2345: Argument of type '{ estado_registro: string; usuario_creacion: null; fecha_provisional: null; }' is not assignable to parameter of type 'never'.
+lib/provisional-system.ts(348,24): error TS2339: Property 'registro_id' does not exist on type 'never'.
+lib/provisional-system.ts(357,15): error TS2345: Argument of type '{ estado_cambio: string; procesado_por: string; fecha_procesamiento: string; }' is not assignable to parameter of type 'never'.
+lib/provisional-system.ts(395,16): error TS2339: Property 'tipo_cambio' does not exist on type 'never'.
+lib/provisional-system.ts(397,34): error TS2339: Property 'tabla_afectada' does not exist on type 'never'.
+lib/provisional-system.ts(397,75): error TS2339: Property 'registro_id' does not exist on type 'never'.
+lib/provisional-system.ts(398,23): error TS2339: Property 'tipo_cambio' does not exist on type 'never'.
+lib/provisional-system.ts(401,22): error TS2339: Property 'tabla_afectada' does not exist on type 'never'.
+lib/provisional-system.ts(402,17): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+lib/provisional-system.ts(403,21): error TS2339: Property 'datos_anteriores' does not exist on type 'never'.
+lib/provisional-system.ts(406,26): error TS2339: Property 'registro_id' does not exist on type 'never'.
+lib/provisional-system.ts(407,23): error TS2339: Property 'tipo_cambio' does not exist on type 'never'.
+lib/provisional-system.ts(410,22): error TS2339: Property 'tabla_afectada' does not exist on type 'never'.
+lib/provisional-system.ts(411,17): error TS2345: Argument of type '{ estado_registro: string; usuario_creacion: null; fecha_provisional: null; }' is not assignable to parameter of type 'never'.
+lib/provisional-system.ts(416,26): error TS2339: Property 'registro_id' does not exist on type 'never'.
+lib/provisional-system.ts(422,15): error TS2345: Argument of type '{ estado_cambio: string; procesado_por: string; fecha_procesamiento: string; notas_admin: string | undefined; }' is not assignable to parameter of type 'never'.
