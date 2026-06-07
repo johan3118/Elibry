@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { PaymentReceipt } from "@/components/payment-receipt"
 import { TimeFormatToggle, formatTimeWithPreference } from "@/components/time-format-toggle"
+import { formatDateDMY } from "@/lib/utils"
 
 interface Cliente {
   id: number
@@ -243,31 +244,12 @@ export default function VerReservaPage() {
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A"
-    try {
-      const date = new Date(dateString)
-      const day = date.getDate().toString().padStart(2, "0")
-      const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-      const month = months[date.getMonth()]
-      const year = date.getFullYear()
-      return `${day}-${month}-${year}`
-    } catch {
-      return "Fecha invalida"
-    }
+    return formatDateDMY(dateString)
   }
 
   const formatDateTime = (dateString?: string) => {
     if (!dateString) return "N/A"
-    try {
-      return new Date(dateString).toLocaleString("es-DO", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    } catch {
-      return "Fecha inválida"
-    }
+    return formatDateDMY(dateString)
   }
 
   const formatCurrency = (amount: number, currency = "DOP") => {

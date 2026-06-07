@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { CreditCard, Edit, ArrowLeft, User, Calendar, FileText, DollarSign, Receipt, Building2 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { formatDateDMY } from "@/lib/utils"
 
 interface Pago {
   id: string
@@ -142,22 +143,8 @@ export default function VerPagoPage() {
     )
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-DO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
-  }
-
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString("es-DO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return formatDateDMY(dateString)
   }
 
   const formatCurrency = (amount: number, currency = "DOP") => {

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Building2, Edit, ArrowLeft, Phone, Mail, MapPin, Calendar, User, FileText, File } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { formatDateDMY } from "@/lib/utils"
 
 interface Suplidor {
   id: number
@@ -88,13 +89,7 @@ export default function VerSuplidorPage() {
   }
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString("es-DO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return formatDateDMY(dateString)
   }
 
   return (

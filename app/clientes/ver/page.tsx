@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Users, Edit, ArrowLeft, Building2, User, Phone, Mail, MapPin, Calendar, FileText, File, ExternalLink } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase, type Cliente } from "@/lib/supabase"
+import { formatDateDMY } from "@/lib/utils"
 
 export default function VerClientePage() {
   const router = useRouter()
@@ -67,22 +68,8 @@ export default function VerClientePage() {
     )
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-DO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
-  }
-
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString("es-DO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return formatDateDMY(dateString)
   }
 
   return (
@@ -181,7 +168,7 @@ export default function VerClientePage() {
                     {cliente.fecha_nacimiento && (
                       <div>
                         <Label className="text-sm font-medium text-gray-500">Fecha de Nacimiento</Label>
-                        <p className="text-lg">{formatDate(cliente.fecha_nacimiento)}</p>
+                        <p className="text-lg">{formatDateDMY(cliente.fecha_nacimiento)}</p>
                       </div>
                     )}
                   </div>

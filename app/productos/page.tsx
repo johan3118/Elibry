@@ -21,7 +21,7 @@ export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipo, setFilterTipo] = useState("ALL")
   const [filterPais, setFilterPais] = useState("ALL")
-  const [filterStatus, setFilterStatus] = useState("ALL")
+  const [filterStatus, setFilterStatus] = useState("ACTIVO")
   const [filterEstadoRegistro, setFilterEstadoRegistro] = useState("ALL")
 
   const { user, isAdmin } = useUser()
@@ -221,7 +221,7 @@ export default function ProductosPage() {
                   setSearchTerm("")
                   setFilterTipo("ALL")
                   setFilterPais("ALL")
-                  setFilterStatus("ALL")
+                  setFilterStatus("ACTIVO")
                   setFilterEstadoRegistro("ALL")
                 }}
                 className="border-blue-200 text-blue-600 hover:bg-blue-50"

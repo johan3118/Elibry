@@ -12,6 +12,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { obtenerRegistrosCompletos } from "@/lib/provisional-system"
 import { useUser } from "@/lib/user-context"
+import { formatDateDMY } from "@/lib/utils"
 
 export default function ReservasPage() {
   const router = useRouter()
@@ -19,7 +20,7 @@ export default function ReservasPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterStatus, setFilterStatus] = useState("ALL")
+  const [filterStatus, setFilterStatus] = useState("PENDIENTE")
   const [filterEstadoRegistro, setFilterEstadoRegistro] = useState("ALL")
 
   const { user, isAdmin } = useUser()
@@ -62,11 +63,6 @@ export default function ReservasPage() {
 
     return matchesSearch && matchesStatus && matchesEstadoRegistro
   })
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "-"
-    return new Date(dateString).toLocaleDateString("es-DO")
-  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-DO", {
@@ -196,7 +192,7 @@ export default function ReservasPage() {
                 variant="outline"
                 onClick={() => {
                   setSearchTerm("")
-                  setFilterStatus("ALL")
+                  setFilterStatus("PENDIENTE")
                   setFilterEstadoRegistro("ALL")
                 }}
                 className="border-blue-200 text-blue-600 hover:bg-blue-50"
@@ -270,7 +266,7 @@ export default function ReservasPage() {
                           </div>
                         </TableCell>
                         <TableCell>{reserva.servicio || "-"}</TableCell>
-                        <TableCell>{formatDate(reserva.fecha_entrada || reserva.fecha_creado)}</TableCell>
+                        <TableCell>{formatDateDMY(reserva.fecha_entrada || reserva.fecha_creado)}</TableCell>
                         <TableCell>{reserva.monto_total ? formatCurrency(reserva.monto_total) : "-"}</TableCell>
                         <TableCell>
                           <Badge variant={reserva.status === "CONFIRMADA" ? "default" : "destructive"}>

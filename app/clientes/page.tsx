@@ -12,6 +12,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { obtenerRegistrosCompletos, type Cliente } from "@/lib/provisional-system"
 import { useUser } from "@/lib/user-context"
+import { formatDateDMY } from "@/lib/utils"
 
 export default function ClientesPage() {
   const router = useRouter()
@@ -65,7 +66,7 @@ export default function ClientesPage() {
     : []
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-DO")
+    return formatDateDMY(dateString)
   }
 
   const getEstadoRegistroBadge = (estado: string) => {

@@ -27,6 +27,7 @@ import {
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { formatDateDMY } from "@/lib/utils"
 
 interface SeguimientoCaso {
   id: number
@@ -37,7 +38,7 @@ interface SeguimientoCaso {
   empresa_distribuidor: string
   telefono_distribuidor: string
   prioridad: "BAJA" | "MEDIA" | "ALTA" | "URGENTE"
-  estado: "ABIERTO" | "EN_PROCESO" | "PENDIENTE_RESPUESTA" | "CERRADO"
+  estado: "ABIERTO" | "EN_PROCESO" | "CERRADO"
   creado_por: string
   cerrado_por?: string
   fecha_cierre?: string
@@ -92,7 +93,7 @@ const fallbackCasos: SeguimientoCaso[] = [
     empresa_distribuidor: "Turismo Plus",
     telefono_distribuidor: "(809) 555-0789",
     prioridad: "MEDIA",
-    estado: "PENDIENTE_RESPUESTA",
+    estado: "EN_PROCESO",
     creado_por: "Pedro López",
     created_at: "2024-01-13T09:15:00Z",
     updated_at: "2024-01-13T11:30:00Z",
@@ -130,7 +131,7 @@ export default function SeguimientoPage() {
   const router = useRouter()
   const [casos, setCasos] = useState<SeguimientoCaso[]>([])
   const [comentarios, setComentarios] = useState<SeguimientoComentario[]>([])
-  const [filtroEstado, setFiltroEstado] = useState<string>("TODOS")
+  const [filtroEstado, setFiltroEstado] = useState<string>("ABIERTO")
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>("TODOS")
   const [busqueda, setBusqueda] = useState("")
   const [casoSeleccionado, setCasoSeleccionado] = useState<SeguimientoCaso | null>(null)
@@ -394,13 +395,7 @@ export default function SeguimientoPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-ES", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return formatDateDMY(dateString)
   }
 
   const getPrioridadColor = (prioridad: string) => {
@@ -424,8 +419,6 @@ export default function SeguimientoPage() {
         return "bg-blue-100 text-blue-800 border-blue-200"
       case "EN_PROCESO":
         return "bg-purple-100 text-purple-800 border-purple-200"
-      case "PENDIENTE_RESPUESTA":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200"
       case "CERRADO":
         return "bg-gray-100 text-gray-800 border-gray-200"
       default:
@@ -641,7 +634,7 @@ export default function SeguimientoPage() {
         )}
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-3">
@@ -668,22 +661,6 @@ export default function SeguimientoPage() {
                   <p className="text-sm text-gray-600">En Proceso</p>
                   <p className="text-2xl font-bold text-green-600">
                     {casos.filter((c) => c.estado === "EN_PROCESO").length}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <MessageSquare className="h-5 w-5 text-yellow-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Pendiente Respuesta</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {casos.filter((c) => c.estado === "PENDIENTE_RESPUESTA").length}
                   </p>
                 </div>
               </div>
@@ -733,7 +710,6 @@ export default function SeguimientoPage() {
                   <SelectItem value="TODOS">Todos los estados</SelectItem>
                   <SelectItem value="ABIERTO">Abierto</SelectItem>
                   <SelectItem value="EN_PROCESO">En Proceso</SelectItem>
-                  <SelectItem value="PENDIENTE_RESPUESTA">Pendiente</SelectItem>
                   <SelectItem value="CERRADO">Cerrado</SelectItem>
                 </SelectContent>
               </Select>
@@ -755,7 +731,7 @@ export default function SeguimientoPage() {
                 variant="outline"
                 onClick={() => {
                   setBusqueda("")
-                  setFiltroEstado("TODOS")
+                  setFiltroEstado("ABIERTO")
                   setFiltroPrioridad("TODOS")
                 }}
                 className="border-blue-200 text-blue-600 hover:bg-blue-50"

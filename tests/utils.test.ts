@@ -46,4 +46,12 @@ describe("formatDateDMY", () => {
     // Test with April which is different (Spanish: Abr, English: Apr)
     expect(formatDateDMY("2026-04-10")).toBe("10-Abr-2026")
   })
+
+  it("handles ISO datetime string (with time component) and returns date-only output", () => {
+    expect(formatDateDMY("2026-05-24T14:30:00Z")).toBe("24-May-2026")
+  })
+
+  it("handles ISO datetime with timezone offset, UTC-safe", () => {
+    expect(formatDateDMY("2026-06-02T23:45:30Z")).toBe("02-Jun-2026")
+  })
 })

@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { formatDateDMY } from "@/lib/utils"
 
 interface Producto {
   id: number
@@ -93,13 +94,7 @@ export default function VerProductoPage() {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "No especificado"
-    return new Date(dateString).toLocaleDateString("es-DO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return formatDateDMY(dateString) || "No especificado"
   }
 
   const getEstadoBadge = (estado?: string) => {

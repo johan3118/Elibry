@@ -39,7 +39,7 @@ export default function SuplidoresPage() {
   const [suplidores, setSuplidores] = useState<Suplidor[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("activo")
+  const [statusFilter, setStatusFilter] = useState("ACTIVO")
   const [paisFilter, setPaisFilter] = useState("todos")
   const router = useRouter()
   const { toast } = useToast()
@@ -77,7 +77,7 @@ export default function SuplidoresPage() {
       suplidor.nombre_responsable?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       suplidor.email?.toLowerCase().includes(searchQuery.toLowerCase())
 
-    const matchesStatus = statusFilter === "todos" || suplidor.status?.toLowerCase() === statusFilter
+    const matchesStatus = statusFilter === "todos" || suplidor.status === statusFilter
     const matchesPais = paisFilter === "todos" || suplidor.pais?.toLowerCase() === paisFilter.toLowerCase()
 
     return matchesSearch && matchesStatus && matchesPais
@@ -226,8 +226,8 @@ export default function SuplidoresPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos los estados</SelectItem>
-                  <SelectItem value="activo">Activo</SelectItem>
-                  <SelectItem value="inactivo">Inactivo</SelectItem>
+                  <SelectItem value="ACTIVO">Activo</SelectItem>
+                  <SelectItem value="INACTIVO">Inactivo</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={paisFilter} onValueChange={setPaisFilter}>

@@ -30,7 +30,7 @@ export default function PagosPage() {
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("todos")
+  const [statusFilter, setStatusFilter] = useState("ACTIVO")
   const router = useRouter()
   const { toast } = useToast()
 
@@ -72,7 +72,7 @@ export default function PagosPage() {
       pago.referencia?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       pago.id.toString().includes(searchQuery)
 
-    const matchesStatus = statusFilter === "todos" || pago.estado.toLowerCase() === statusFilter
+    const matchesStatus = statusFilter === "todos" || pago.estado === statusFilter
 
     return matchesSearch && matchesStatus
   })
@@ -177,9 +177,9 @@ export default function PagosPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Confirmados</p>
+                  <p className="text-sm text-gray-600">Activos</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {pagosFiltrados.filter((p) => p.estado === "CONFIRMADO").length}
+                    {pagosFiltrados.filter((p) => p.estado === "ACTIVO").length}
                   </p>
                 </div>
               </div>
@@ -223,10 +223,10 @@ export default function PagosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos los estados</SelectItem>
-                  <SelectItem value="confirmado">Confirmado</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="procesado">Procesado</SelectItem>
-                  <SelectItem value="cancelado">Cancelado</SelectItem>
+                  <SelectItem value="ACTIVO">Activo</SelectItem>
+                  <SelectItem value="PENDIENTE">Pendiente</SelectItem>
+                  <SelectItem value="PROCESADO">Procesado</SelectItem>
+                  <SelectItem value="CANCELADO">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
