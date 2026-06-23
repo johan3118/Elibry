@@ -200,7 +200,10 @@ export default function CRMDashboardPage() {
 
         {/* Estadísticas Generales */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <Card>
+          <Card
+            className="cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => router.push("/crm/casos?filtro=TODOS")}
+          >
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -212,7 +215,10 @@ export default function CRMDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className="cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => router.push("/crm/casos?filtro=ABIERTO")}
+          >
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -224,7 +230,10 @@ export default function CRMDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className="cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => router.push("/crm/casos?filtro=EN_PROCESO")}
+          >
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -236,7 +245,10 @@ export default function CRMDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className="cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => router.push("/crm/casos?filtro=CERRADO")}
+          >
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>

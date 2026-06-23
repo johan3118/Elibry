@@ -965,7 +965,8 @@ export default function ReservasPendientesPage() {
                       <SortableTableHeader label="ID Reserva" field="id" currentSort={sortField} currentDirection={sortDirection} onSort={handleSort} />
                       <TableHead className="whitespace-nowrap">ID Recibo</TableHead>
                       <SortableTableHeader label="Status" field="status" currentSort={sortField} currentDirection={sortDirection} onSort={handleSort} />
-                      <SortableTableHeader label="Balance Reserva" field="balance_reserva" currentSort={sortField} currentDirection={sortDirection} onSort={handleSort} />
+                      <SortableTableHeader label="Precio Total" field="balance_reserva" currentSort={sortField} currentDirection={sortDirection} onSort={handleSort} />
+                      <TableHead className="whitespace-nowrap">Balance Pendiente</TableHead>
                       <TableHead className="whitespace-nowrap">Balance RD$</TableHead>
                       <TableHead className="whitespace-nowrap">Balance US$</TableHead>
                       <SortableTableHeader label="Total Abonado" field="balance_abonado" currentSort={sortField} currentDirection={sortDirection} onSort={handleSort} />
@@ -1018,6 +1019,7 @@ export default function ReservasPendientesPage() {
                           <TableCell className="font-mono">{reserva.codigo_reserva || reserva.codigo || "N/A"}</TableCell>
                           <TableCell>{getEstadoBadge(reserva.status)}</TableCell>
                           <TableCell className="whitespace-nowrap text-right font-semibold">{formatCurrency(reserva.balance_reserva, reserva.moneda)}</TableCell>
+                          <TableCell className="whitespace-nowrap text-right text-blue-600 font-semibold">{formatCurrency(reserva.balance_general, reserva.moneda)}</TableCell>
                           <TableCell className="whitespace-nowrap text-right text-orange-600 font-semibold">
                             {reserva.moneda === "DOP" ? formatCurrency(reserva.balance_general, "DOP") : "-"}
                           </TableCell>

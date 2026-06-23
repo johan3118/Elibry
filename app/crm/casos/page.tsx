@@ -138,7 +138,7 @@ export default function CRMCasosPage() {
   const [comentarios, setComentarios] = useState<SeguimientoComentario[]>([])
   const [filtroEstado, setFiltroEstado] = useState<string>("ABIERTO")
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>("TODOS")
-  const [filtroAntiguedad, setFiltroAntiguedad] = useState<string>(filtroParam || "TODOS")
+  const [filtroAntiguedad, setFiltroAntiguedad] = useState<string>("TODOS")
   const [filtroCreador, setFiltroCreador] = useState<string>("TODOS")
   const [busqueda, setBusqueda] = useState("")
   const [casoSeleccionado, setCasoSeleccionado] = useState<SeguimientoCaso | null>(null)
@@ -233,9 +233,16 @@ export default function CRMCasosPage() {
   // Update filter when URL param changes
   useEffect(() => {
     if (filtroParam) {
-      setFiltroAntiguedad(filtroParam)
-      // When filtering by age, show all non-closed cases
-      setFiltroEstado("TODOS")
+      if (filtroParam === "ABIERTO" || filtroParam === "EN_PROCESO" || filtroParam === "CERRADO") {
+        setFiltroEstado(filtroParam)
+        setFiltroAntiguedad("TODOS")
+      } else if (filtroParam === "TODOS") {
+        setFiltroEstado("TODOS")
+        setFiltroAntiguedad("TODOS")
+      } else {
+        setFiltroAntiguedad(filtroParam)
+        setFiltroEstado("TODOS")
+      }
     }
   }, [filtroParam])
 

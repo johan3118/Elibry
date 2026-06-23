@@ -602,6 +602,7 @@ export default function VerReservaPage() {
                         <TableHead>Monto</TableHead>
                         <TableHead>Método</TableHead>
                         <TableHead>Concepto</TableHead>
+                        <TableHead>Referencia</TableHead>
                         <TableHead>Registrado Por</TableHead>
                         <TableHead>Acciones</TableHead>
                       </TableRow>
@@ -618,6 +619,7 @@ export default function VerReservaPage() {
                             <Badge variant="outline">{pago.metodo_pago || "N/A"}</Badge>
                           </TableCell>
                           <TableCell>{pago.concepto || "Pago de reserva"}</TableCell>
+                          <TableCell>{pago.referencia || "N/A"}</TableCell>
                           <TableCell>{pago.registrado_por || "N/A"}</TableCell>
                           <TableCell>
                             <Button

@@ -13,6 +13,14 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
   Save,
   CalendarIcon,
   Clock,
@@ -29,6 +37,8 @@ import {
   Calculator,
   ArrowLeft,
   Info,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -67,6 +77,7 @@ export default function EditarReservaPage() {
   const [fechaLimitePago, setFechaLimitePago] = useState<Date>()
   const [fechaGastosProveedor, setFechaGastosProveedor] = useState<Date>()
   const [showFechaSalidaPicker, setShowFechaSalidaPicker] = useState(false)
+  const [productosOpen, setProductosOpen] = useState(false)
   const [searchCliente, setSearchCliente] = useState("")
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -519,7 +530,7 @@ export default function EditarReservaPage() {
         const { error: deleteError } = await supabase.from("reserva_detalles").delete().eq("reserva_id", reservaId)
 
         if (deleteError) {
-          console.error("❌ Error eliminando detalles existentes:", deleteError)
+          throw new Error("No se pudieron eliminar los detalles anteriores: " + deleteError.message)
         }
 
         // Insertar nuevos detalles
@@ -544,11 +555,10 @@ export default function EditarReservaPage() {
         const { error: detallesError } = await supabase.from("reserva_detalles").insert(detallesParaInsertar)
 
         if (detallesError) {
-          console.error("❌ Error insertando nuevos detalles:", detallesError)
           toast({
             title: "Advertencia",
             description: "Reserva actualizada, pero hubo un error al guardar los detalles del servicio.",
-            variant: "warning",
+            variant: "destructive",
           })
         }
 
@@ -567,6 +577,52 @@ export default function EditarReservaPage() {
         )
 
         if (resultado.success) {
+          // Actualizar detalles como provisionales: borrar los anteriores e insertar los nuevos
+          const { error: deleteDetallesError } = await supabase!
+            .from("reserva_detalles")
+            .delete()
+            .eq("reserva_id", Number.parseInt(reservaId))
+
+          if (!deleteDetallesError) {
+            const detallesProvisionalesParaInsertar = detallesValidos.map((detalle) => ({
+              reserva_id: Number.parseInt(reservaId),
+              concepto: detalle.concepto.substring(0, 200),
+              descripcion: detalle.descripcion || null,
+              cantidad: 1,
+              precio_unitario: detalle.precio_unitario,
+              descuento: detalle.descuento,
+              subtotal: detalle.subtotal,
+              impuestos: 0,
+              total: detalle.total,
+              noches: detalle.noches,
+              pasajeros: detalle.pasajeros,
+              habitaciones: detalle.habitaciones,
+              registrado_por: user?.nombre || "Usuario Sistema",
+              editado_por: user?.nombre || "Usuario Sistema",
+              estado_registro: "PROVISIONAL",
+            }))
+
+            // eslint-disable-next-line
+            // @ts-ignore
+            const { error: insertDetallesError } = await (supabase!.from("reserva_detalles").insert(detallesProvisionalesParaInsertar))
+
+            if (insertDetallesError) {
+              toast({
+                title: "Advertencia",
+                description:
+                  "Cambio provisional creado, pero los detalles del servicio no se guardaron. Edite la reserva para reingresarlos.",
+                variant: "destructive",
+              })
+            }
+          } else {
+            toast({
+              title: "Advertencia",
+              description:
+                "Cambio provisional creado, pero los detalles del servicio no se pudieron actualizar. Edite la reserva para reingresarlos.",
+              variant: "destructive",
+            })
+          }
+
           toast({
             title: "Cambio provisional creado",
             description: "Los cambios en la reserva requieren aprobación de un administrador.",
@@ -770,18 +826,53 @@ export default function EditarReservaPage() {
               <div className="grid grid-cols-1 gap-4 mb-4">
                 <div>
                   <Label htmlFor="idLugar">Producto/Lugar *</Label>
-                  <Select value={formData.idLugar} onValueChange={(value) => handleInputChange("idLugar", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar producto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {productos.map((producto) => (
-                        <SelectItem key={producto.id} value={producto.id.toString()}>
-                          {producto.nombre_producto} ({producto.tipo})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={productosOpen} onOpenChange={setProductosOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={productosOpen}
+                        className="w-full justify-between font-normal"
+                      >
+                        <span className="truncate">
+                          {formData.idLugar
+                            ? (() => {
+                                const p = productos.find((p) => p.id.toString() === formData.idLugar)
+                                return p ? `${p.nombre_producto} (${p.tipo})` : "Seleccionar producto"
+                              })()
+                            : "Seleccionar producto"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Buscar producto..." />
+                        <CommandList>
+                          <CommandEmpty>No se encontraron productos.</CommandEmpty>
+                          <CommandGroup>
+                            {productos.map((producto) => (
+                              <CommandItem
+                                key={producto.id}
+                                value={`${producto.nombre_producto} ${producto.tipo}`}
+                                onSelect={() => {
+                                  handleInputChange("idLugar", producto.id.toString())
+                                  setProductosOpen(false)
+                                }}
+                              >
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    formData.idLugar === producto.id.toString() ? "opacity-100" : "opacity-0"
+                                  }`}
+                                />
+                                {producto.nombre_producto} ({producto.tipo})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
