@@ -54,4 +54,10 @@ describe("formatDateDMY", () => {
   it("handles ISO datetime with timezone offset, UTC-safe", () => {
     expect(formatDateDMY("2026-06-02T23:45:30Z")).toBe("02-Jun-2026")
   })
+
+  it("regression (Bug 5): check-in/out dates are not shifted a day back in UTC-4", () => {
+    // Client entered check-in 25-Aug / check-out 28-Aug; must render exactly, not 24/27
+    expect(formatDateDMY("2026-08-25")).toBe("25-Ago-2026")
+    expect(formatDateDMY("2026-08-28")).toBe("28-Ago-2026")
+  })
 })

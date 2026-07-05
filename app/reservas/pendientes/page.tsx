@@ -28,6 +28,7 @@ import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { SortableTableHeader } from "@/components/sortable-table-header"
 import { TimeFormatToggle, formatTimeWithPreference } from "@/components/time-format-toggle"
+import { formatDateDMY } from "@/lib/utils"
 
 interface Reserva {
   id: number
@@ -38,6 +39,7 @@ interface Reserva {
   cliente?: {
     nombre: string // This will be nombre_completo or razon_social
     apellido: string // Keep for backward compatibility but will be empty
+    telefonos?: string
   }
   producto_id: number
   producto?: {
@@ -223,7 +225,7 @@ export default function ReservasPendientesPage() {
           // Fetch client data - use nombre_completo for clientes and razon_social for empresas
           const { data: cliente, error: clienteError } = await supabase
             .from("clientes")
-            .select("tipo_cliente, nombre_completo, razon_social")
+            .select("tipo_cliente, nombre_completo, razon_social, telefonos")
             .eq("id", reserva.cliente_id)
             .single()
 
@@ -244,6 +246,7 @@ export default function ReservasPendientesPage() {
             clienteEnriquecido = {
               nombre: nombreDisplay,
               apellido: "", // Keep empty for backward compatibility
+              telefonos: cliente.telefonos,
             }
           }
 
@@ -511,20 +514,6 @@ export default function ReservasPendientesPage() {
       maximumFractionDigits: 2,
     })
     return currency === "USD" ? `$${formatted} USD` : `RD$${formatted}`
-  }
-
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return "N/A"
-    try {
-      const date = new Date(dateString)
-      const day = date.getDate().toString().padStart(2, "0")
-      const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-      const month = months[date.getMonth()]
-      const year = date.getFullYear()
-      return `${day}-${month}-${year}`
-    } catch {
-      return "N/A"
-    }
   }
 
   const formatTime = (timeString: string | null | undefined) => {
@@ -1030,10 +1019,10 @@ export default function ReservasPendientesPage() {
                           <TableCell className="text-center">{reserva.abonado_contabilidad || "N/A"}</TableCell>
                           <TableCell className="whitespace-nowrap">{reserva.cedula_cliente || "N/A"}</TableCell>
                           <TableCell className="whitespace-nowrap">{reserva.cliente?.nombre || "N/A"}</TableCell>
-                          <TableCell className="whitespace-nowrap">N/A</TableCell>
+                          <TableCell className="whitespace-nowrap">{reserva.cliente?.telefonos?.split(",")[0]?.trim() || "N/A"}</TableCell>
                           <TableCell className="whitespace-nowrap">{reserva.producto?.nombre_producto || "N/A"}</TableCell>
-                          <TableCell className="whitespace-nowrap">{formatDate(reserva.fecha_entrada)}</TableCell>
-                          <TableCell className="whitespace-nowrap">{formatDate(reserva.fecha_salida)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDateDMY(reserva.fecha_entrada)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDateDMY(reserva.fecha_salida)}</TableCell>
                           <TableCell className="text-center">{noches}</TableCell>
                           <TableCell className="whitespace-nowrap">{reserva.producto?.tipo || "N/A"}</TableCell>
                           <TableCell className="text-center">{reserva.pasajeros || "N/A"}</TableCell>
@@ -1044,11 +1033,11 @@ export default function ReservasPendientesPage() {
                           <TableCell className={`text-center ${diasGastosCte !== null && diasGastosCte < 0 ? "text-red-600 font-bold" : diasGastosCte !== null && diasGastosCte <= 3 ? "text-orange-600 font-semibold" : ""}`}>
                             {diasGastosCte !== null ? diasGastosCte : "N/A"}
                           </TableCell>
-                          <TableCell className="whitespace-nowrap">{formatDate(reserva.fecha_limite_pago)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDateDMY(reserva.fecha_limite_pago)}</TableCell>
                           <TableCell className={`text-center ${diasGastosProv !== null && diasGastosProv < 0 ? "text-red-600 font-bold" : diasGastosProv !== null && diasGastosProv <= 3 ? "text-orange-600 font-semibold" : ""}`}>
                             {diasGastosProv !== null ? diasGastosProv : "N/A"}
                           </TableCell>
-                          <TableCell className="whitespace-nowrap">{formatDate(reserva.fecha_gastos_proveedor)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDateDMY(reserva.fecha_gastos_proveedor)}</TableCell>
                         </TableRow>
                       )
                     })}
