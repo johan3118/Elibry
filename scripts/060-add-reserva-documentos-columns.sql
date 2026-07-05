@@ -10,7 +10,7 @@
 -- existing `reservas.factura_url` column, which is used by
 -- app/facturacion/page.tsx for a different purpose.
 --
--- ROLLBACK: ALTER TABLE reservas DROP COLUMN IF EXISTS documentos_urls, DROP COLUMN factura_cliente_url, DROP COLUMN factura_proveedor_url;
+-- ROLLBACK: ALTER TABLE reservas DROP COLUMN IF EXISTS documentos_urls, DROP COLUMN IF EXISTS factura_cliente_url, DROP COLUMN IF EXISTS factura_proveedor_url;
 
 ALTER TABLE reservas ADD COLUMN IF NOT EXISTS documentos_urls TEXT[];
 ALTER TABLE reservas ADD COLUMN IF NOT EXISTS factura_cliente_url TEXT;
