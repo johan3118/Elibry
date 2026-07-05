@@ -21,6 +21,8 @@ import {
   CreditCard,
   Clock,
   Printer,
+  File,
+  ExternalLink,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
@@ -120,6 +122,9 @@ interface Reserva {
   abonado_contabilidad?: number
   fecha_gastos_proveedor?: string
   nota_interna_reserva?: string
+  documentos_urls?: string[]
+  factura_cliente_url?: string
+  factura_proveedor_url?: string
   fecha_creado?: string
   fecha_editado?: string
   editado_por?: string
@@ -282,6 +287,13 @@ export default function VerReservaPage() {
   const handleShowReceipt = (pago: Pago) => {
     setSelectedPago(pago)
     setShowReceiptDialog(true)
+  }
+
+  const getFileName = (url: string) => {
+    const parts = url.split("/")
+    const raw = parts[parts.length - 1] || "Documento"
+    // Strip timestamp prefix (e.g. "1713000000000_filename.pdf")
+    return raw.replace(/^\d+_/, "")
   }
 
   if (loading) {
@@ -817,6 +829,67 @@ export default function VerReservaPage() {
                 <Label className="text-sm font-medium text-gray-600">Nota Interna</Label>
                 <p className="mt-1 p-3 bg-gray-50 rounded-md text-sm">{reserva.nota_interna_reserva || "Sin notas"}</p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Documentos Adjuntos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg text-[#3399cc] flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Documentos Adjuntos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const documentos: { label: string; url: string }[] = []
+                if (reserva.factura_cliente_url) {
+                  documentos.push({ label: "Factura Cliente", url: reserva.factura_cliente_url })
+                }
+                if (reserva.factura_proveedor_url) {
+                  documentos.push({ label: "Factura Proveedor", url: reserva.factura_proveedor_url })
+                }
+                if (reserva.documentos_urls && reserva.documentos_urls.length > 0) {
+                  reserva.documentos_urls.forEach((url, i) => {
+                    documentos.push({ label: `Documento ${i + 1}`, url })
+                  })
+                }
+
+                if (documentos.length === 0) {
+                  return <p className="text-sm text-gray-500">No hay documentos adjuntos</p>
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {documentos.map((doc, i) => {
+                      const name = getFileName(doc.url)
+                      const isPdf = doc.url.toLowerCase().endsWith(".pdf")
+                      return (
+                        <a
+                          key={i}
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                        >
+                          <div className="flex items-center space-x-3">
+                            {isPdf ? (
+                              <FileText className="w-5 h-5 text-red-500" />
+                            ) : (
+                              <File className="w-5 h-5 text-blue-500" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium text-gray-700">{doc.label}</p>
+                              <p className="text-xs text-gray-500 truncate max-w-xs">{name}</p>
+                            </div>
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-400 shrink-0" />
+                        </a>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
         </div>

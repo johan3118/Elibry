@@ -38,7 +38,7 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { createClient, type Cliente, type Producto, type Suplidor } from "@/lib/supabase"
+import { createClient, uploadImage, type Cliente, type Producto, type Suplidor } from "@/lib/supabase"
 import { sanitizeHabitaciones } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -379,6 +379,54 @@ export default function CrearReservaPage() {
       const totales = calcularTotalesGenerales()
       const pagoInicialMonto = formData.pagoInicial ? Number.parseFloat(formData.pagoInicial) : 0
 
+      // Subir archivos adjuntos (factura cliente, factura proveedor, adicionales)
+      // Un archivo individual que falle no debe abortar la creación de la reserva
+      let facturaClienteUrl: string | null = null
+      let facturaProveedorUrl: string | null = null
+      const documentosUrls: string[] = []
+
+      if (facturaClienteFile) {
+        try {
+          facturaClienteUrl = await uploadImage(facturaClienteFile, "reservas-documentos", facturaClienteFile.name)
+        } catch (error) {
+          console.error("Error subiendo factura cliente:", error)
+          toast({
+            title: "Advertencia",
+            description: "No se pudo subir la factura del cliente. La reserva continuará sin ese adjunto.",
+            variant: "destructive",
+          })
+        }
+      }
+
+      if (facturaProveedorFile) {
+        try {
+          facturaProveedorUrl = await uploadImage(facturaProveedorFile, "reservas-documentos", facturaProveedorFile.name)
+        } catch (error) {
+          console.error("Error subiendo factura proveedor:", error)
+          toast({
+            title: "Advertencia",
+            description: "No se pudo subir la factura del proveedor. La reserva continuará sin ese adjunto.",
+            variant: "destructive",
+          })
+        }
+      }
+
+      if (archivosAdicionales.length > 0) {
+        for (const file of archivosAdicionales) {
+          try {
+            const url = await uploadImage(file, "reservas-documentos", file.name)
+            if (url) documentosUrls.push(url)
+          } catch (error) {
+            console.error("Error subiendo archivo adicional:", error)
+            toast({
+              title: "Advertencia",
+              description: `No se pudo subir el archivo "${file.name}". La reserva continuará sin ese adjunto.`,
+              variant: "destructive",
+            })
+          }
+        }
+      }
+
       // balance_reserva = precio_total (fijo, no cambia)
       // balance_abonado = suma de pagos realizados
       // balance_general = balance_reserva - balance_abonado (saldo restante)
@@ -413,6 +461,9 @@ export default function CrearReservaPage() {
         proveedor: nombreProveedor ? nombreProveedor.substring(0, 200) : null,
         asientos_bus: formData.asientosBus ? formData.asientosBus.substring(0, 10) : null,
         nota_interna_reserva: formData.notaInternaReserva || null,
+        factura_cliente_url: facturaClienteUrl || null,
+        factura_proveedor_url: facturaProveedorUrl || null,
+        documentos_urls: documentosUrls.length > 0 ? documentosUrls : null,
         // Balances corregidos
         balance_reserva: totales.total, // Precio total original (fijo)
         balance_abonado: pagoInicialMonto, // Total pagado
