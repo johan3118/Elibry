@@ -39,6 +39,7 @@ interface Cliente {
   email?: string
   identificacion?: string
   rnc?: string
+  referido_por?: string
   status?: string
 }
 
@@ -441,7 +442,7 @@ export default function VerReservaPage() {
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Referido Por</Label>
-                <p>{reserva.referido_por || "N/A"}</p>
+                <p>{reserva.referido_por || cliente?.referido_por || "N/A"}</p>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Atendido Por</Label>
