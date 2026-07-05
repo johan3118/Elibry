@@ -50,6 +50,7 @@ import {
   type Reserva,
   type ReservaDetalle,
 } from "@/lib/supabase"
+import { sanitizeHabitaciones } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter, useParams } from "next/navigation"
 import { useUser } from "@/lib/user-context"
@@ -546,7 +547,7 @@ export default function EditarReservaPage() {
           total: detalle.total,
           noches: detalle.noches,
           pasajeros: detalle.pasajeros,
-          habitaciones: detalle.habitaciones,
+          habitaciones: sanitizeHabitaciones(detalle.habitaciones),
           registrado_por: user?.nombre || "Usuario Sistema",
           editado_por: user?.nombre || "Usuario Sistema",
           estado_registro: "PERMANENTE",
@@ -557,7 +558,7 @@ export default function EditarReservaPage() {
         if (detallesError) {
           toast({
             title: "Advertencia",
-            description: "Reserva actualizada, pero hubo un error al guardar los detalles del servicio.",
+            description: `Reserva actualizada, pero hubo un error al guardar los detalles del servicio: ${detallesError.message || detallesError.details || "error desconocido"}.`,
             variant: "destructive",
           })
         }
@@ -596,7 +597,7 @@ export default function EditarReservaPage() {
               total: detalle.total,
               noches: detalle.noches,
               pasajeros: detalle.pasajeros,
-              habitaciones: detalle.habitaciones,
+              habitaciones: sanitizeHabitaciones(detalle.habitaciones),
               registrado_por: user?.nombre || "Usuario Sistema",
               editado_por: user?.nombre || "Usuario Sistema",
               estado_registro: "PROVISIONAL",
@@ -609,8 +610,7 @@ export default function EditarReservaPage() {
             if (insertDetallesError) {
               toast({
                 title: "Advertencia",
-                description:
-                  "Cambio provisional creado, pero los detalles del servicio no se guardaron. Edite la reserva para reingresarlos.",
+                description: `Cambio provisional creado, pero los detalles del servicio no se guardaron: ${insertDetallesError.message || insertDetallesError.details || "error desconocido"}. Edite la reserva para reingresarlos.`,
                 variant: "destructive",
               })
             }

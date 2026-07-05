@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest"
-import { formatDateDMY } from "../lib/utils"
+import { formatDateDMY, sanitizeHabitaciones } from "../lib/utils"
 
 describe("formatDateDMY", () => {
   it("returns 'N/A' for null", () => {
@@ -59,5 +59,64 @@ describe("formatDateDMY", () => {
     // Client entered check-in 25-Aug / check-out 28-Aug; must render exactly, not 24/27
     expect(formatDateDMY("2026-08-25")).toBe("25-Ago-2026")
     expect(formatDateDMY("2026-08-28")).toBe("28-Ago-2026")
+  })
+})
+
+describe("sanitizeHabitaciones (regression: Bug 2 - only first service persists)", () => {
+  it("returns null for the string 'N/A'", () => {
+    expect(sanitizeHabitaciones("N/A")).toBeNull()
+  })
+
+  it("returns null for a lowercase 'n/a'", () => {
+    expect(sanitizeHabitaciones("n/a")).toBeNull()
+  })
+
+  it("returns null for an empty string", () => {
+    expect(sanitizeHabitaciones("")).toBeNull()
+  })
+
+  it("returns null for a whitespace-only string", () => {
+    expect(sanitizeHabitaciones("   ")).toBeNull()
+  })
+
+  it("returns null for null", () => {
+    expect(sanitizeHabitaciones(null)).toBeNull()
+  })
+
+  it("returns null for undefined", () => {
+    expect(sanitizeHabitaciones(undefined)).toBeNull()
+  })
+
+  it("parses a positive numeric string to a number", () => {
+    expect(sanitizeHabitaciones("3")).toBe(3)
+  })
+
+  it("passes through a positive number unchanged", () => {
+    expect(sanitizeHabitaciones(3)).toBe(3)
+  })
+
+  it("returns null for 0 (zero rooms is not a meaningful count)", () => {
+    expect(sanitizeHabitaciones(0)).toBeNull()
+    expect(sanitizeHabitaciones("0")).toBeNull()
+  })
+
+  it("returns null for a non-numeric string", () => {
+    expect(sanitizeHabitaciones("abc")).toBeNull()
+  })
+
+  it("returns null for a negative number", () => {
+    expect(sanitizeHabitaciones(-1)).toBeNull()
+  })
+
+  it("returns null for a negative numeric string", () => {
+    expect(sanitizeHabitaciones("-5")).toBeNull()
+  })
+
+  it("returns null for a non-integer number", () => {
+    expect(sanitizeHabitaciones(2.5)).toBeNull()
+  })
+
+  it("returns null for a non-integer numeric string", () => {
+    expect(sanitizeHabitaciones("2.5")).toBeNull()
   })
 })

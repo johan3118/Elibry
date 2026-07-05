@@ -39,6 +39,7 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { createClient, type Cliente, type Producto, type Suplidor } from "@/lib/supabase"
+import { sanitizeHabitaciones } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { crearReservaProvisional } from "@/lib/provisional-system"
@@ -451,7 +452,7 @@ export default function CrearReservaPage() {
           total: detalle.total,
           noches: detalle.noches,
           pasajeros: detalle.pasajeros,
-          habitaciones: detalle.habitaciones,
+          habitaciones: sanitizeHabitaciones(detalle.habitaciones),
           registrado_por: user?.nombre || "Usuario Sistema",
           editado_por: user?.nombre || "Usuario Sistema",
           estado_registro: "PERMANENTE",
@@ -461,8 +462,7 @@ export default function CrearReservaPage() {
         if (detallesError) {
           toast({
             title: "Advertencia",
-            description:
-              "Reserva creada, pero los detalles del servicio no se guardaron. Edite la reserva para reingresarlos.",
+            description: `Reserva creada, pero los detalles del servicio no se guardaron: ${detallesError.message || detallesError.details || "error desconocido"}. Edite la reserva para reingresarlos.`,
             variant: "destructive",
           })
         }
@@ -533,7 +533,7 @@ export default function CrearReservaPage() {
             total: detalle.total,
             noches: detalle.noches,
             pasajeros: detalle.pasajeros,
-            habitaciones: detalle.habitaciones,
+            habitaciones: sanitizeHabitaciones(detalle.habitaciones),
             registrado_por: user?.nombre || "Usuario Sistema",
             editado_por: user?.nombre || "Usuario Sistema",
             estado_registro: "PROVISIONAL",
@@ -545,8 +545,7 @@ export default function CrearReservaPage() {
           if (detallesProvisionalesError) {
             toast({
               title: "Advertencia",
-              description:
-                "Solicitud de reserva enviada, pero los detalles del servicio no se guardaron. Edite la reserva para reingresarlos.",
+              description: `Solicitud de reserva enviada, pero los detalles del servicio no se guardaron: ${detallesProvisionalesError.message || detallesProvisionalesError.details || "error desconocido"}. Edite la reserva para reingresarlos.`,
               variant: "destructive",
             })
           }
