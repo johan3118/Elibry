@@ -11,6 +11,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatDateDMY } from "@/lib/utils"
+import { extractContactName } from "../constants"
 
 interface Producto {
   id: number
@@ -145,11 +146,7 @@ export default function VerProductoPage() {
   const emails: string[] = producto.emails_json || []
 
   // Extract contact name from contactos string ("Nombre - Tel: ...")
-  let contactoNombre = ""
-  if (producto.contactos) {
-    const match = producto.contactos.match(/^([^-]+)/)
-    if (match) contactoNombre = match[1].trim()
-  }
+  const contactoNombre = extractContactName(producto.contactos)
 
   return (
     <div className="min-h-screen bg-gray-50">
