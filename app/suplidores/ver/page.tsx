@@ -31,6 +31,22 @@ interface Suplidor {
   editado_por?: string
   fecha_creado: string
   fecha_editado: string
+  estado_registro?: string
+}
+
+const getEstadoBadge = (estado?: string) => {
+  switch (estado) {
+    case "PERMANENTE":
+      return <Badge className="bg-green-100 text-green-800">Permanente</Badge>
+    case "PROVISIONAL":
+      return <Badge className="bg-yellow-100 text-yellow-800">Provisional</Badge>
+    case "MODIFICADO":
+      return <Badge className="bg-blue-100 text-blue-800">Modificado</Badge>
+    case "ELIMINADO":
+      return <Badge className="bg-red-100 text-red-800">Eliminado</Badge>
+    default:
+      return <Badge className="bg-gray-100 text-gray-800">Permanente</Badge>
+  }
 }
 
 export default function VerSuplidorPage() {
@@ -311,6 +327,10 @@ export default function VerSuplidorPage() {
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Ultima Modificacion</Label>
                   <p className="text-lg">{suplidor.fecha_editado ? formatDateTime(suplidor.fecha_editado) : "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-500 mb-1">Estado Registro</Label>
+                  <div>{getEstadoBadge(suplidor.estado_registro)}</div>
                 </div>
               </CardContent>
             </Card>
