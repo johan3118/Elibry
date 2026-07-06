@@ -18,6 +18,18 @@ export interface VoucherData {
     telefono: string
     email: string
   }
+  // Campos opcionales adicionales personalizados desde /facturacion/voucher (F4)
+  localizador?: string
+  habitacion?: string
+  regimen?: string
+  noches?: number
+  adultos?: number
+  ninos?: number
+  fechaEntrada?: string
+  fechaSalida?: string
+  destino?: string
+  pasajeros?: string[]
+  observaciones?: string
 }
 
 export interface ProformaData {
@@ -75,7 +87,7 @@ export interface ReciboData {
 }
 
 export function generateVoucherHTML(data: VoucherData): string {
-  const localizador = Math.floor(Math.random() * 90000) + 10000
+  const localizador = data.localizador || String(Math.floor(Math.random() * 90000) + 10000)
 
   // Format helpers
   const MONTHS_ES = [
@@ -101,9 +113,9 @@ export function generateVoucherHTML(data: VoucherData): string {
     new Intl.NumberFormat("es-DO", { style: "currency", currency: data.reserva.moneda || "USD" }).format(n)
 
   // Dates
-  const checkIn = parseDate(data.reserva.fecha)
-  const noches = 3 // <-- change if needed
-  const checkOut = new Date(checkIn.getTime() + noches * 24 * 60 * 60 * 1000)
+  const checkIn = data.fechaEntrada ? parseDate(data.fechaEntrada) : parseDate(data.reserva.fecha)
+  const noches = data.noches && data.noches > 0 ? data.noches : 3 // <-- change if needed
+  const checkOut = data.fechaSalida ? parseDate(data.fechaSalida) : new Date(checkIn.getTime() + noches * 24 * 60 * 60 * 1000)
 
   return `
 <!DOCTYPE html>
@@ -174,6 +186,14 @@ export function generateVoucherHTML(data: VoucherData): string {
     </div>
 
     <div class="details">
+      ${
+        data.destino
+          ? `<div class="row">
+        <div class="lbl">DESTINO:</div>
+        <div class="val">${data.destino}</div>
+      </div>`
+          : ""
+      }
       <div class="row">
         <div class="lbl">DIRECCIÓN:</div>
         <div class="val">${data.cliente.direccion}</div>
@@ -185,9 +205,10 @@ export function generateVoucherHTML(data: VoucherData): string {
       <div class="row">
         <div class="lbl">SERVICIOS:</div>
         <div class="val">
-          - ALOJAMIENTO - TODO INCLUIDO
+          - ALOJAMIENTO - ${data.regimen || "TODO INCLUIDO"}
           <div class="services-list">
             <div>- SERVICIO CONTRATADO: ${data.reserva.servicio}</div>
+            ${data.habitacion ? `<div>- HABITACIÓN: ${data.habitacion}</div>` : ""}
           </div>
         </div>
       </div>
@@ -195,6 +216,14 @@ export function generateVoucherHTML(data: VoucherData): string {
         <div class="lbl">NOCHES:</div>
         <div class="val">${noches}</div>
       </div>
+      ${
+        data.adultos !== undefined || data.ninos !== undefined
+          ? `<div class="row">
+        <div class="lbl">OCUPACIÓN:</div>
+        <div class="val">${data.adultos ?? 0} Adultos, ${data.ninos ?? 0} Niños</div>
+      </div>`
+          : ""
+      }
       <div class="row">
         <div class="lbl">TOTAL:</div>
         <div class="val">${fmtMoney(data.reserva.total)}</div>
@@ -206,13 +235,20 @@ export function generateVoucherHTML(data: VoucherData): string {
     <div class="details">
       <div class="row">
         <div class="lbl">OBSERVACIONES</div>
-        <div class="val"></div>
+        <div class="val">${data.observaciones || ""}</div>
       </div>
       <div class="row">
         <div class="lbl">PASAJEROS</div>
         <div class="val">
-          <div>1) ${data.cliente.nombre}</div>
-          <div>2) Acompañante</div>
+          ${
+            data.pasajeros && data.pasajeros.filter((p) => p && p.trim()).length > 0
+              ? data.pasajeros
+                  .filter((p) => p && p.trim())
+                  .map((p, i) => `<div>${i + 1}) ${p}</div>`)
+                  .join("")
+              : `<div>1) ${data.cliente.nombre}</div>
+          <div>2) Acompañante</div>`
+          }
         </div>
       </div>
     </div>

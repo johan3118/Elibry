@@ -93,6 +93,71 @@ interface EditableProformaData {
   observacion: string
 }
 
+// Escapa caracteres HTML para evitar inyectar markup desde los campos editables del usuario
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+
+// generateProformaHTML (lib/document-generator.tsx) no expone hooks de datos para
+// pasajeros/políticas/realizado-por/observación: esas secciones vienen con texto fijo
+// en el template. Para no tocar el generador compartido (fuera de alcance de esta tarea,
+// ver F4/nota de alcance), se post-procesa el HTML ya generado e inyectamos ahí los
+// valores editados por el usuario (F2).
+const applyEditableProformaData = (html: string, customData: EditableProformaData): string => {
+  let result = html
+
+  // Observación
+  if (customData.observacion && customData.observacion.trim()) {
+    result = result.replace(
+      /<div class="observations-content">[\s\S]*?<\/div>/,
+      `<div class="observations-content">${escapeHtml(customData.observacion)}</div>`,
+    )
+  }
+
+  // Pasajeros
+  const pasajeros = customData.pasajeros.map((p) => p.trim()).filter(Boolean)
+  if (pasajeros.length > 0) {
+    const passengerLines = pasajeros
+      .map((nombre, index) => `<div class="passenger-line">${index + 1}) ${escapeHtml(nombre)}</div>`)
+      .join("")
+    result = result.replace(/<div class="passenger-line">[\s\S]*?<\/div>/, passengerLines)
+  }
+
+  // Políticas de cancelación y penalidad (dos bloques ".policy-text" en ese orden)
+  if (customData.politicas.cancelacion || customData.politicas.penalidad) {
+    let policyIndex = 0
+    result = result.replace(/<div class="policy-text">[\s\S]*?<\/div>/g, (match) => {
+      policyIndex += 1
+      const texto =
+        policyIndex === 1 ? customData.politicas.cancelacion : customData.politicas.penalidad
+      if (!texto || !texto.trim()) return match
+      return `<div class="policy-text">${escapeHtml(texto)}</div>`
+    })
+  }
+
+  // Advertencia
+  if (customData.politicas.advertencia && customData.politicas.advertencia.trim()) {
+    result = result.replace(
+      /<div class="warning-text">[\s\S]*?<\/div>/,
+      `<div class="warning-text">${escapeHtml(customData.politicas.advertencia)}</div>`,
+    )
+  }
+
+  // Realizado por (solo el primer "attended-name", que corresponde a "Atendido por")
+  if (customData.realizadoPor && customData.realizadoPor.trim()) {
+    result = result.replace(
+      /<span class="attended-name">[\s\S]*?<\/span>/,
+      `<span class="attended-name">${escapeHtml(customData.realizadoPor)}</span>`,
+    )
+  }
+
+  return result
+}
+
 export default function FacturacionProformaPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
@@ -307,7 +372,10 @@ export default function FacturacionProformaPage() {
         },
       }
 
-      const proformaHTML = generateProformaHTML(proformaData)
+      let proformaHTML = generateProformaHTML(proformaData)
+      if (customData) {
+        proformaHTML = applyEditableProformaData(proformaHTML, customData)
+      }
       openDocumentInNewWindow(proformaHTML, `Proforma - ${reserva.codigo}`)
 
       toast({

@@ -271,7 +271,7 @@ export default function VoucherPage() {
       cliente: {
         nombre: selectedReserva.cliente?.nombre_completo || selectedReserva.cliente?.razon_social || customData.titular,
         email: selectedReserva.cliente?.email || "cliente@email.com",
-        telefono: selectedReserva.cliente?.telefonos || customData.adultos.toString(),
+        telefono: selectedReserva.cliente?.telefonos || "",
         direccion: customData.destino || "Dirección del cliente",
       },
       reserva: {
@@ -287,7 +287,16 @@ export default function VoucherPage() {
         telefono: "(809) 992-3548",
         email: "informacion@aventurasturisticasconellibry.com",
       },
-      // Pass additional data for passengers and observations
+      // Pass additional data collected in the "Datos del Voucher" form (F4)
+      localizador: customData.localizador,
+      habitacion: customData.habitacion,
+      regimen: customData.regimen,
+      noches: customData.noches,
+      adultos: customData.adultos,
+      ninos: customData.ninos,
+      fechaEntrada: customData.fechaEntrada,
+      fechaSalida: customData.fechaSalida,
+      destino: customData.destino,
       pasajeros: customData.pasajeros,
       observaciones: customData.observaciones,
     }
@@ -315,7 +324,7 @@ export default function VoucherPage() {
       cliente: {
         nombre: selectedReserva.cliente?.nombre_completo || selectedReserva.cliente?.razon_social || customData.titular,
         email: selectedReserva.cliente?.email || "cliente@email.com",
-        telefono: selectedReserva.cliente?.telefonos || customData.adultos.toString(),
+        telefono: selectedReserva.cliente?.telefonos || "",
         direccion: customData.destino || "Dirección del cliente",
       },
       reserva: {
@@ -331,6 +340,16 @@ export default function VoucherPage() {
         telefono: "(809) 992-3548",
         email: "informacion@aventurasturisticasconellibry.com",
       },
+      // Pass additional data collected in the "Datos del Voucher" form (F4)
+      localizador: customData.localizador,
+      habitacion: customData.habitacion,
+      regimen: customData.regimen,
+      noches: customData.noches,
+      adultos: customData.adultos,
+      ninos: customData.ninos,
+      fechaEntrada: customData.fechaEntrada,
+      fechaSalida: customData.fechaSalida,
+      destino: customData.destino,
       pasajeros: customData.pasajeros,
       observaciones: customData.observaciones,
     }
