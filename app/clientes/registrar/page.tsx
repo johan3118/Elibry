@@ -78,7 +78,7 @@ export default function RegistrarClientePage() {
 
     if (tipoCliente === "EMPRESA") {
       if (!formData.rnc.trim()) {
-        newErrors.rnc = "La identificacion es obligatoria"
+        newErrors.rnc = "La identificación es obligatoria"
       }
       if (!formData.razon_social.trim()) {
         newErrors.razon_social = "La razón social es obligatoria"
@@ -141,7 +141,7 @@ export default function RegistrarClientePage() {
       // Subir imagen solo si es empresa y se seleccionó una
       if (tipoCliente === "EMPRESA" && selectedImage) {
         try {
-          imagenUrl = await uploadImage(selectedImage, "temp", "EMPRESA")
+          imagenUrl = await uploadImage(selectedImage, "clientes-imagenes", "EMPRESA")
         } catch (error) {
           alert(error instanceof Error ? error.message : "Error al subir la imagen")
           setLoading(false)
@@ -178,6 +178,7 @@ export default function RegistrarClientePage() {
         telefonos: formData.telefonos,
         email: formData.email,
         direccion: formData.direccion,
+        pais: pais,
         observacion: formData.observacion || null,
         referido_por: formData.referido_por || null,
         registrado_por: user?.nombre || "Usuario Sistema",

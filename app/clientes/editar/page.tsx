@@ -38,6 +38,7 @@ export default function EditarClientePage() {
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [tipoIdentificacion, setTipoIdentificacion] = useState("CEDULA")
+  const [tipoIdentificacionEmpresa, setTipoIdentificacionEmpresa] = useState("RNC")
   const [emails, setEmails] = useState<string[]>([""])
   const [documentFiles, setDocumentFiles] = useState<File[]>([])
   const [existingDocUrls, setExistingDocUrls] = useState<string[]>([])
@@ -110,7 +111,21 @@ export default function EditarClientePage() {
           setTipoIdentificacion("ID_EXTRANJERO")
         }
       }
-      
+
+      // Detect doc type from existing data (empresa), same approach as NORMAL above
+      if (data.tipo_cliente === "EMPRESA" && data.rnc) {
+        const rncId = data.rnc
+        if (/^\d{3}-\d{7}-\d{1}$/.test(rncId)) {
+          setTipoIdentificacionEmpresa("CEDULA")
+        } else if (/^\d{3}-\d{5}-\d{1}$/.test(rncId) || /^\d{9}$/.test(rncId)) {
+          setTipoIdentificacionEmpresa("RNC")
+        } else if (/^[A-Za-z]/.test(rncId)) {
+          setTipoIdentificacionEmpresa("PASAPORTE")
+        } else {
+          setTipoIdentificacionEmpresa("ID_EXTRANJERO")
+        }
+      }
+
       setFormData({
         tipo_cliente: data.tipo_cliente,
         compania: data.compania,
@@ -152,7 +167,7 @@ export default function EditarClientePage() {
 
     if (formData.tipo_cliente === "EMPRESA") {
       if (!formData.rnc.trim()) {
-        newErrors.rnc = "El RNC es obligatorio"
+        newErrors.rnc = "La identificación es obligatoria"
       }
       if (!formData.razon_social.trim()) {
         newErrors.razon_social = "La razón social es obligatoria"
@@ -425,8 +440,9 @@ export default function EditarClientePage() {
                 <div>
                   <p className="text-sm font-medium text-orange-900">Cliente en Estado Provisional</p>
                   <p className="text-xs text-orange-700">
-                    Este cliente fue creado/modificado por {cliente.usuario_creacion} y está pendiente de aprobación
-                    administrativa.
+                    Este cliente fue creado/modificado por{" "}
+                    {cliente.registrado_por || cliente.usuario_creacion || "Usuario Sistema"} y está pendiente de
+                    aprobación administrativa.
                   </p>
                 </div>
               </div>
@@ -494,16 +510,39 @@ export default function EditarClientePage() {
                 {formData.tipo_cliente === "EMPRESA" ? (
                   <>
                     <div>
-                      <Label htmlFor="rnc">RNC *</Label>
+                      <Label htmlFor="tipoIdentificacionEmpresa">Tipo de Documento *</Label>
+                      <Select value={tipoIdentificacionEmpresa} onValueChange={setTipoIdentificacionEmpresa}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ID_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="rnc">
+                        {ID_TYPES.find((t) => t.value === tipoIdentificacionEmpresa)?.label ?? "Identificacion"} *
+                      </Label>
                       <Input
                         id="rnc"
                         value={formData.rnc}
                         onChange={(e) => {
-                          const formatted = formatRNC(e.target.value)
-                          handleInputChange("rnc", formatted)
+                          if (tipoIdentificacionEmpresa === "RNC" || tipoIdentificacionEmpresa === "CEDULA") {
+                            const formatted = formatRNC(e.target.value)
+                            handleInputChange("rnc", formatted)
+                          } else {
+                            handleInputChange("rnc", e.target.value)
+                          }
                         }}
-                        placeholder="131-12345-6"
-                        maxLength={11}
+                        placeholder={
+                          tipoIdentificacionEmpresa === "RNC" || tipoIdentificacionEmpresa === "CEDULA"
+                            ? "131-12345-6"
+                            : `Ingrese ${ID_TYPES.find((t) => t.value === tipoIdentificacionEmpresa)?.label ?? "identificacion"}`
+                        }
+                        maxLength={tipoIdentificacionEmpresa === "RNC" || tipoIdentificacionEmpresa === "CEDULA" ? 11 : 30}
                         required
                       />
                       {errors.rnc && <p className="text-red-500 text-sm">{errors.rnc}</p>}
