@@ -128,8 +128,6 @@ export default function CrearReservaPage() {
     comision: "NO",
     facturaEnviadaCliente: "NO",
     facturaRecibidaProveedor: "NO",
-    facturaClienteAdjunta: "NO",
-    facturaProveedorAdjunta: "NO",
     notaInternaReserva: "",
     asientosBus: "",
     grupo: "NO",
@@ -1393,18 +1391,21 @@ export default function CrearReservaPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
                 <div className="space-y-3">
                   <div>
-                    <Label htmlFor="facturaClienteAdjunta">Factura Cliente</Label>
-                    <Select value={formData.facturaClienteAdjunta} onValueChange={(value) => handleInputChange("facturaClienteAdjunta", value)}>
+                    <Label htmlFor="facturaEnviadaCliente">Factura Enviada Cliente</Label>
+                    <Select
+                      value={formData.facturaEnviadaCliente}
+                      onValueChange={(value) => handleInputChange("facturaEnviadaCliente", value)}
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="NO">No</SelectItem>
                         <SelectItem value="SI">Sí</SelectItem>
+                        <SelectItem value="NO">No</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  {formData.facturaClienteAdjunta === "SI" && (
+                  {formData.facturaEnviadaCliente === "SI" && (
                     <div>
                       <Label htmlFor="facturaClienteFile">Adjuntar Factura Cliente</Label>
                       <Input
@@ -1434,18 +1435,21 @@ export default function CrearReservaPage() {
 
                 <div className="space-y-3">
                   <div>
-                    <Label htmlFor="facturaProveedorAdjunta">Factura Proveedor</Label>
-                    <Select value={formData.facturaProveedorAdjunta} onValueChange={(value) => handleInputChange("facturaProveedorAdjunta", value)}>
+                    <Label htmlFor="facturaRecibidaProveedor">Factura Recibida Proveedor</Label>
+                    <Select
+                      value={formData.facturaRecibidaProveedor}
+                      onValueChange={(value) => handleInputChange("facturaRecibidaProveedor", value)}
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="NO">No</SelectItem>
                         <SelectItem value="SI">Sí</SelectItem>
+                        <SelectItem value="NO">No</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  {formData.facturaProveedorAdjunta === "SI" && (
+                  {formData.facturaRecibidaProveedor === "SI" && (
                     <div>
                       <Label htmlFor="facturaProveedorFile">Adjuntar Factura Proveedor</Label>
                       <Input
