@@ -390,7 +390,7 @@ export default function ClientesBalancePage() {
                     {clientesFiltrados.map((cliente) => (
                       <tr key={cliente.id} className="border-b hover:bg-gray-50">
                         <td className="p-2 font-mono">{cliente.id}</td>
-                        <td className="p-2 whitespace-nowrap">{cliente.cedula_pasaporte || cliente.rnc || "N/A"}</td>
+                        <td className="p-2 whitespace-nowrap">{cliente.identificacion || cliente.rnc || "N/A"}</td>
                         <td className="p-2 whitespace-nowrap">
                           <div>
                             <p className="font-medium">{cliente.nombre_completo || cliente.razon_social}</p>
