@@ -247,21 +247,6 @@ export default function EditarSuplidorPage() {
     return `(${limitedNumbers.slice(0, 3)}) ${limitedNumbers.slice(3, 6)}-${limitedNumbers.slice(6)}`
   }
 
-  const formatRNC = (value: string) => {
-    const numbers = value.replace(/\D/g, "")
-    const limitedNumbers = numbers.slice(0, 9)
-
-    if (limitedNumbers.length === 0) {
-      return ""
-    } else if (limitedNumbers.length <= 3) {
-      return limitedNumbers
-    } else if (limitedNumbers.length <= 8) {
-      return `${limitedNumbers.slice(0, 3)}-${limitedNumbers.slice(3)}`
-    } else {
-      return `${limitedNumbers.slice(0, 3)}-${limitedNumbers.slice(3, 8)}-${limitedNumbers.slice(8)}`
-    }
-  }
-
   if (loadingData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -348,18 +333,15 @@ export default function EditarSuplidorPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="identificacion">Identificación *</Label>
+                  <Label htmlFor="identificacion">RNC / Identificacion *</Label>
                   <Input
                     id="identificacion"
                     value={formData.identificacion}
-                    onChange={(e) => {
-                      const formatted = formatRNC(e.target.value)
-                      handleInputChange("identificacion", formatted)
-                    }}
-                    placeholder="131-12345-6"
-                    maxLength={11}
+                    onChange={(e) => handleInputChange("identificacion", e.target.value)}
+                    placeholder="RNC, Pasaporte, Tax ID, etc."
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">Acepta RNC, Pasaporte, Tax ID u otro formato internacional</p>
                   {errors.identificacion && <p className="text-red-500 text-sm">{errors.identificacion}</p>}
                 </div>
 
