@@ -1,10 +1,29 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js"
+
+// Tipo de esquema permisivo: evita que @supabase/supabase-js infiera `never`
+// para las filas/inserts/updates de cada tabla cuando no se genera un tipo
+// de base de datos específico. No cambia el comportamiento en runtime.
+type GenericTable = { Row: any; Insert: any; Update: any; Relationships: [] }
+// NOTE: Functions must use `unknown` (not `any`) for Args/Returns. Using `any`
+// makes postgrest-js's computed-field detection (`ComputedField`) match every
+// column name (since `Record<string, any>` structurally satisfies `{ '': Row }`),
+// which then `Omit`s every key from the row and collapses `select()` results to `{}`.
+type GenericFunction = { Args: Record<string, unknown>; Returns: unknown }
+export type Database = {
+  public: {
+    Tables: Record<string, GenericTable>
+    Views: Record<string, GenericTable>
+    Functions: Record<string, GenericFunction>
+    Enums: Record<string, any>
+    CompositeTypes: Record<string, any>
+  }
+}
 
 // Singleton para el cliente de Supabase
-let supabaseInstance: ReturnType<typeof createSupabaseClient> | null = null
+let supabaseInstance: SupabaseClient<Database> | null = null
 
 // Función para crear/obtener el cliente de Supabase
-function getSupabaseClient() {
+function getSupabaseClient(): SupabaseClient<Database> | null {
   // Only reuse a cached instance — never cache null
   if (supabaseInstance) {
     return supabaseInstance
@@ -14,7 +33,7 @@ function getSupabaseClient() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (supabaseUrl && supabaseAnonKey) {
-    supabaseInstance = createSupabaseClient(supabaseUrl, supabaseAnonKey)
+    supabaseInstance = createSupabaseClient<Database>(supabaseUrl, supabaseAnonKey)
     return supabaseInstance
   }
 
@@ -22,7 +41,7 @@ function getSupabaseClient() {
 }
 
 // Proxy object so that `supabase.from(...)` always resolves lazily
-const supabaseProxy = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
+const supabaseProxy = new Proxy({} as SupabaseClient<Database>, {
   get(_target, prop) {
     const client = getSupabaseClient()
     if (!client) throw new Error("Supabase client no disponible. Verifica NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.")
@@ -31,7 +50,11 @@ const supabaseProxy = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
 })
 
 // Función para crear cliente de Supabase - EXPORT NAMED
-export const createClient = () => getSupabaseClient()
+// Devuelve el proxy (nunca null) para que TypeScript no marque el resultado
+// como `SupabaseClient | null` en cada callsite. El proxy conserva el mismo
+// comportamiento en runtime: lanza un error claro al usarse si las variables
+// de entorno no están configuradas (ver arriba).
+export const createClient = () => supabaseProxy
 
 // Export default del cliente (proxy — always resolves lazily)
 export const supabase = supabaseProxy
@@ -101,6 +124,13 @@ export interface Cliente {
   fecha_editado: string
   editado_por?: string
   imagen_url?: string
+
+  // Campos del sistema de cambios provisionales (ver scripts/047-add-provisional-status-to-tables.sql)
+  estado_registro?: string
+  usuario_creacion?: string
+  fecha_provisional?: string
+  dependencias_ids?: string
+  cedula_pasaporte?: string
 }
 
 export interface Suplidor {
@@ -149,6 +179,7 @@ export interface ReservaDetalle {
   total: number
   noches: number
   pasajeros: number
+  habitaciones?: number
   fecha_creado: string
   fecha_editado: string
   registrado_por: string

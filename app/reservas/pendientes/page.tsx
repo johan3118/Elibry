@@ -390,13 +390,13 @@ export default function ReservasPendientesPage() {
     let matchesPenalidadCliente = true
     if (filterPenalidadCliente) {
       const fechaLimite = reserva.fecha_limite_pago
-      matchesPenalidadCliente = fechaLimite && fechaLimite >= todayStr && fechaLimite <= in5DaysStr
+      matchesPenalidadCliente = !!(fechaLimite && fechaLimite >= todayStr && fechaLimite <= in5DaysStr)
     }
 
     let matchesPenalidadProveedor = true
     if (filterPenalidadProveedor) {
       const fechaGastos = reserva.fecha_gastos_proveedor
-      matchesPenalidadProveedor = fechaGastos && fechaGastos >= todayStr && fechaGastos <= in5DaysStr
+      matchesPenalidadProveedor = !!(fechaGastos && fechaGastos >= todayStr && fechaGastos <= in5DaysStr)
     }
 
     // Keep original "updates" behavior: effectively only search + moneda for filtering result set

@@ -190,7 +190,7 @@ export default function RegistrarPagoPage() {
       // Then get productos separately
       const productosIds = reservasData?.map((r) => r.producto_id).filter(Boolean) || []
 
-      let productosData = []
+      let productosData: { id: number; nombre_producto: string }[] = []
       if (productosIds.length > 0) {
         const { data: productos, error: productosError } = await supabase
           .from("productos")

@@ -300,7 +300,7 @@ export async function obtenerRegistrosCompletos(tabla: string, supabaseClient?: 
 
     console.log(`✅ Registros obtenidos de ${tabla}:`, data?.length || 0)
     if (data && data.length > 0) {
-      console.log(`📋 Rango de IDs: ${Math.min(...data.map((r) => r.id))} - ${Math.max(...data.map((r) => r.id))}`)
+      console.log(`📋 Rango de IDs: ${Math.min(...data.map((r: any) => r.id))} - ${Math.max(...data.map((r: any) => r.id))}`)
     }
     return { data: data || [], error: null }
   } catch (err) {

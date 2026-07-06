@@ -23,7 +23,14 @@ describe("supabase client module", () => {
     }
   })
 
-  it("createClient returns null when env vars are unset", async () => {
+  it("createClient() never returns null — it returns a lazy proxy that throws on actual use when env vars are unset", async () => {
+    // NOTE: createClient() used to return `getSupabaseClient()` directly, which
+    // could be `null` when env vars were unset. It now always returns the lazy
+    // `supabaseProxy` (same object as the default `supabase` export) so that
+    // TypeScript callers don't have to null-check every `createClient()` call
+    // site. Runtime behavior on missing env vars is preserved: the proxy still
+    // throws a clear error, just when a property is actually accessed instead
+    // of the caller getting `null` back.
     const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const originalAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -32,7 +39,9 @@ describe("supabase client module", () => {
       delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
       const { createClient } = await import("../lib/supabase")
-      expect(createClient()).toBeNull()
+      const client = createClient()
+      expect(client).not.toBeNull()
+      expect(() => client.from("test_table")).toThrow("Supabase client no disponible")
     } finally {
       if (originalUrl) process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl
       if (originalAnonKey) process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = originalAnonKey
