@@ -52,7 +52,7 @@ interface Pago {
   referencia?: string
   concepto?: string
   numero_recibo?: string
-  status?: string
+  estado?: string
 }
 
 export default function BuscarPagosPage() {
@@ -235,8 +235,8 @@ export default function BuscarPagosPage() {
       (pago.metodo_pago && pago.metodo_pago.toLowerCase().includes(searchTerm)) ||
       (pago.referencia && pago.referencia.toLowerCase().includes(searchTerm))
 
-    const pagoStatus = (pago.status || "").toLowerCase()
-    const matchesStatus = statusFilter === "todos" || pagoStatus === statusFilter.toLowerCase()
+    const pagoEstado = (pago.estado || "").toLowerCase()
+    const matchesStatus = statusFilter === "todos" || pagoEstado === statusFilter.toLowerCase()
 
     return matchesSearch && matchesStatus
   })
@@ -245,10 +245,8 @@ export default function BuscarPagosPage() {
     if (!estado) return "bg-gray-100 text-gray-800"
 
     switch (estado.toLowerCase()) {
-      case "procesado":
+      case "activo":
         return "bg-green-100 text-green-800"
-      case "pendiente":
-        return "bg-yellow-100 text-yellow-800"
       case "anulado":
         return "bg-red-100 text-red-800"
       default:
@@ -260,8 +258,8 @@ export default function BuscarPagosPage() {
     (sum, pago) => sum + (Number.parseFloat(pago.monto?.toString() || "0") || 0),
     0,
   )
-  const pagosProcesados = filteredPagos.filter((pago) => (pago.status || "").toLowerCase() === "procesado").length
-  const pagosPendientes = filteredPagos.filter((pago) => (pago.status || "").toLowerCase() === "pendiente").length
+  const pagosActivos = filteredPagos.filter((pago) => (pago.estado || "").toLowerCase() === "activo").length
+  const pagosAnulados = filteredPagos.filter((pago) => (pago.estado || "").toLowerCase() === "anulado").length
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A"
@@ -361,8 +359,8 @@ export default function BuscarPagosPage() {
               <div className="flex items-center">
                 <CreditCard className="w-8 h-8 text-green-600" />
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">Procesados</p>
-                  <p className="text-2xl font-bold text-blue-600">{pagosProcesados}</p>
+                  <p className="text-sm font-medium text-gray-500">Activos</p>
+                  <p className="text-2xl font-bold text-blue-600">{pagosActivos}</p>
                 </div>
               </div>
             </CardContent>
@@ -371,10 +369,10 @@ export default function BuscarPagosPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center">
-                <CreditCard className="w-8 h-8 text-yellow-600" />
+                <CreditCard className="w-8 h-8 text-red-600" />
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">Pendientes</p>
-                  <p className="text-2xl font-bold text-green-600">{pagosPendientes}</p>
+                  <p className="text-sm font-medium text-gray-500">Anulados</p>
+                  <p className="text-2xl font-bold text-green-600">{pagosAnulados}</p>
                 </div>
               </div>
             </CardContent>
@@ -403,8 +401,7 @@ export default function BuscarPagosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos los estados</SelectItem>
-                  <SelectItem value="procesado">Procesados</SelectItem>
-                  <SelectItem value="pendiente">Pendientes</SelectItem>
+                  <SelectItem value="activo">Activos</SelectItem>
                   <SelectItem value="anulado">Anulados</SelectItem>
                 </SelectContent>
               </Select>
@@ -467,7 +464,7 @@ export default function BuscarPagosPage() {
                           </TableCell>
                           <TableCell>{pago.metodo_pago || "N/A"}</TableCell>
                           <TableCell>
-                            <Badge className={getStatusColor(pago.status)}>{pago.status || "Pendiente"}</Badge>
+                            <Badge className={getStatusColor(pago.estado)}>{pago.estado || "N/A"}</Badge>
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-2">

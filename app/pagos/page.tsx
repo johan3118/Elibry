@@ -79,12 +79,14 @@ export default function PagosPage() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
+      case "activo":
       case "confirmado":
         return "bg-green-100 text-green-800"
       case "pendiente":
         return "bg-yellow-100 text-yellow-800"
       case "procesado":
         return "bg-blue-100 text-blue-800"
+      case "anulado":
       case "cancelado":
         return "bg-red-100 text-red-800"
       default:
@@ -190,9 +192,9 @@ export default function PagosPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Pendientes</p>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {pagosFiltrados.filter((p) => p.estado === "PENDIENTE").length}
+                  <p className="text-sm text-gray-600">Anulados</p>
+                  <p className="text-2xl font-bold text-red-600">
+                    {pagosFiltrados.filter((p) => p.estado === "ANULADO").length}
                   </p>
                 </div>
               </div>
@@ -224,9 +226,7 @@ export default function PagosPage() {
                 <SelectContent>
                   <SelectItem value="todos">Todos los estados</SelectItem>
                   <SelectItem value="ACTIVO">Activo</SelectItem>
-                  <SelectItem value="PENDIENTE">Pendiente</SelectItem>
-                  <SelectItem value="PROCESADO">Procesado</SelectItem>
-                  <SelectItem value="CANCELADO">Cancelado</SelectItem>
+                  <SelectItem value="ANULADO">Anulado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -286,7 +286,7 @@ export default function PagosPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => router.push(`/pagos/ver/${pago.id}`)}
+                              onClick={() => router.push(`/pagos/ver?id=${pago.id}`)}
                               className="border-blue-200 text-blue-600 hover:bg-blue-50"
                             >
                               <Eye className="w-4 h-4" />

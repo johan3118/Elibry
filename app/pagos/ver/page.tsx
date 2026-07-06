@@ -18,6 +18,8 @@ interface Pago {
   monto: number
   metodo_pago: string
   referencia: string
+  fecha_pago: string
+  concepto: string
   estado: string
   notas?: string
   usuario: string
@@ -28,9 +30,9 @@ interface Pago {
 
 interface Reserva {
   id: string
-  numero_reserva: string
+  codigo: string
   moneda: string
-  total: number
+  precio_total: number
   producto_id?: string
 }
 
@@ -156,12 +158,16 @@ export default function VerPagoPage() {
 
   const getEstadoBadge = (estado: string) => {
     switch (estado) {
+      case "ACTIVO":
       case "COMPLETADO":
-        return <Badge className="bg-green-100 text-green-800">Completado</Badge>
+        return <Badge className="bg-green-100 text-green-800">{estado === "ACTIVO" ? "Activo" : "Completado"}</Badge>
       case "PENDIENTE":
         return <Badge className="bg-yellow-100 text-yellow-800">Pendiente</Badge>
+      case "ANULADO":
       case "CANCELADO":
-        return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>
+        return (
+          <Badge className="bg-red-100 text-red-800">{estado === "ANULADO" ? "Anulado" : "Cancelado"}</Badge>
+        )
       default:
         return <Badge className="bg-gray-100 text-gray-800">{estado}</Badge>
     }
@@ -182,9 +188,16 @@ export default function VerPagoPage() {
           </Badge>
         )
       case "TARJETA":
+      case "TARJETA_CREDITO":
         return (
           <Badge variant="outline" className="border-purple-200 text-purple-700">
-            Tarjeta
+            Tarjeta de Crédito
+          </Badge>
+        )
+      case "TARJETA_DEBITO":
+        return (
+          <Badge variant="outline" className="border-purple-200 text-purple-700">
+            Tarjeta de Débito
           </Badge>
         )
       case "CHEQUE":
@@ -251,6 +264,10 @@ export default function VerPagoPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-500">Concepto</Label>
+                  <p className="text-lg font-semibold">{pago.concepto}</p>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-500">ID del Pago</Label>
@@ -268,6 +285,10 @@ export default function VerPagoPage() {
                     <Label className="text-sm font-medium text-gray-500">Referencia</Label>
                     <p className="text-lg font-mono">{pago.referencia}</p>
                   </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-500">Fecha de Pago</Label>
+                    <p className="text-lg">{formatDateTime(pago.fecha_pago)}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -284,11 +305,13 @@ export default function VerPagoPage() {
                 <div className="grid grid-cols-1 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Número de Reserva</Label>
-                    <p className="text-lg font-semibold">{reserva?.numero_reserva}</p>
+                    <p className="text-lg font-semibold">{reserva?.codigo}</p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Total de la Reserva</Label>
-                    <p className="text-lg font-semibold">{formatCurrency(reserva?.total || 0, reserva?.moneda)}</p>
+                    <p className="text-lg font-semibold">
+                      {formatCurrency(reserva?.precio_total || 0, reserva?.moneda)}
+                    </p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Producto/Servicio</Label>
