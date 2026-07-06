@@ -13,6 +13,7 @@ import { ArrowLeft, Save, Package, AlertCircle, Trash2, File } from "lucide-reac
 import { actualizarProductoProvisional } from "@/lib/provisional-system"
 import { useUser } from "@/lib/user-context"
 import { supabase, uploadImage } from "@/lib/supabase"
+import { COUNTRIES, TIPOS_PRODUCTO, normalizeTipo, normalizePais, extractContactName } from "../constants"
 
 interface Suplidor {
   id: number
@@ -36,6 +37,7 @@ interface Producto {
   fecha_creado: string
   fecha_editado: string
   editado_por?: string
+  estado_registro?: string
   estado_provisional?: string
   usuario_creacion?: string
 }
@@ -50,7 +52,7 @@ export default function EditarProductoPage() {
     nombre_producto: "",
     nombre_original: "",
     tipo: "",
-    suplidor_id: "",
+    suplidor_id: "0",
     contacto_nombre: "",
     contacto_telefono1: "",
     contacto_telefono2: "",
@@ -69,54 +71,6 @@ export default function EditarProductoPage() {
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
   const [documentFiles, setDocumentFiles] = useState<File[]>([])
   const [existingDocUrls, setExistingDocUrls] = useState<string[]>([])
-
-  const paises = [
-    "República Dominicana",
-    "Estados Unidos",
-    "España",
-    "Francia",
-    "Italia",
-    "México",
-    "Colombia",
-    "Argentina",
-    "Brasil",
-    "Chile",
-    "Perú",
-    "Ecuador",
-    "Venezuela",
-    "Panamá",
-    "Costa Rica",
-    "Guatemala",
-    "Honduras",
-    "Nicaragua",
-    "El Salvador",
-    "Cuba",
-    "Jamaica",
-    "Haití",
-    "Puerto Rico",
-    "Canadá",
-    "Reino Unido",
-    "Alemania",
-    "Portugal",
-    "Holanda",
-    "Bélgica",
-    "Suiza",
-    "Austria",
-    "Grecia",
-    "Turquía",
-    "Japón",
-    "China",
-    "India",
-    "Australia",
-    "Nueva Zelanda",
-    "Sudáfrica",
-    "Egipto",
-    "Marruecos",
-    "Túnez",
-    "Otros",
-  ]
-
-  const tiposProducto = ["HOTEL", "EXCURSION", "TRANSPORTE", "PAQUETE", "OTROS"]
 
   // Get product ID from URL
   useEffect(() => {
@@ -146,32 +100,26 @@ export default function EditarProductoPage() {
       }
 
       setProducto(data)
-      
+
       // Parsear contactos existentes si existen en formato JSON
       const telefonos = data.telefonos_json || []
       const emails = data.emails_json || []
-      
+
       // Extraer nombre del contacto del campo contactos (formato: "Nombre - Tel: xxx")
-      let contactoNombre = ""
-      if (data.contactos) {
-        const match = data.contactos.match(/^([^-]+)/)
-        if (match) {
-          contactoNombre = match[1].trim()
-        }
-      }
-      
+      const contactoNombre = extractContactName(data.contactos)
+
       setFormData({
         codigo: data.codigo || "",
         nombre_producto: data.nombre_producto || "",
         nombre_original: data.nombre_original || "",
-        tipo: data.tipo || "",
-        suplidor_id: data.suplidor_id?.toString() || "",
+        tipo: normalizeTipo(data.tipo),
+        suplidor_id: data.suplidor_id?.toString() || "0",
         contacto_nombre: contactoNombre,
         contacto_telefono1: telefonos[0] || "",
         contacto_telefono2: telefonos[1] || "",
         contacto_email1: emails[0] || "",
         contacto_email2: emails[1] || "",
-        pais: data.pais || "",
+        pais: normalizePais(data.pais),
         direccion: data.direccion || "",
         comentarios: data.comentarios || "",
         status: data.status || "ACTIVO",
@@ -283,7 +231,8 @@ export default function EditarProductoPage() {
         nombre_producto: formData.nombre_producto,
         nombre_original: formData.nombre_original,
         tipo: formData.tipo,
-        suplidor_id: formData.suplidor_id ? Number.parseInt(formData.suplidor_id) : null,
+        suplidor_id:
+          formData.suplidor_id && formData.suplidor_id !== "0" ? Number.parseInt(formData.suplidor_id) : null,
         contactos: contactosTexto,
         telefonos_json: telefonosJson.length > 0 ? telefonosJson : null,
         emails_json: emailsJson.length > 0 ? emailsJson : null,
@@ -303,7 +252,7 @@ export default function EditarProductoPage() {
           .from("productos")
           .update({
             ...productoData,
-            estado_provisional: "PERMANENTE",
+            estado_registro: "PERMANENTE",
           })
           .eq("id", producto.id)
           .select()
@@ -379,7 +328,12 @@ export default function EditarProductoPage() {
     )
   }
 
-  const esProvisional = producto.estado_provisional !== "PERMANENTE"
+  // `estado_registro` is the column the generic provisional system (used by
+  // the non-admin path above) and the productos list actually read/write;
+  // `estado_provisional` is kept as a fallback for any legacy row that only
+  // has that column populated.
+  const estadoActual = producto.estado_registro || producto.estado_provisional
+  const esProvisional = estadoActual !== "PERMANENTE"
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -474,9 +428,9 @@ export default function EditarProductoPage() {
                       <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
                     <SelectContent>
-                      {tiposProducto.map((tipo) => (
-                        <SelectItem key={tipo} value={tipo}>
-                          {tipo}
+                      {TIPOS_PRODUCTO.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -497,7 +451,9 @@ export default function EditarProductoPage() {
                       <SelectItem value="0">Sin suplidor</SelectItem>
                       {suplidores.map((suplidor) => (
                         <SelectItem key={suplidor.id} value={suplidor.id.toString()}>
-                          {suplidor.razon_social} - {suplidor.nombre_comercial}
+                          {suplidor.nombre_comercial
+                            ? `${suplidor.razon_social} - ${suplidor.nombre_comercial}`
+                            : suplidor.razon_social}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -511,7 +467,7 @@ export default function EditarProductoPage() {
                       <SelectValue placeholder="Seleccionar país" />
                     </SelectTrigger>
                     <SelectContent>
-                      {paises.map((pais) => (
+                      {COUNTRIES.map((pais) => (
                         <SelectItem key={pais} value={pais}>
                           {pais}
                         </SelectItem>
@@ -530,6 +486,7 @@ export default function EditarProductoPage() {
                     <SelectContent>
                       <SelectItem value="ACTIVO">ACTIVO</SelectItem>
                       <SelectItem value="INACTIVO">INACTIVO</SelectItem>
+                      <SelectItem value="DESCONTINUADO">DESCONTINUADO</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

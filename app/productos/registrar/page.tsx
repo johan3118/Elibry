@@ -16,12 +16,10 @@ import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/lib/user-context"
 import { crearProductoProvisional } from "@/lib/provisional-system"
 import { obtenerRegistrosCompletos } from "@/lib/provisional-system"
-
-const COUNTRIES = [
-  "Afganistán","Albania","Alemania","Andorra","Angola","Antigua y Barbuda","Arabia Saudita","Argelia","Argentina","Armenia","Australia","Austria","Azerbaiyán","Bahamas","Bangladés","Barbados","Baréin","Bélgica","Belice","Benín","Bielorrusia","Birmania","Bolivia","Bosnia y Herzegovina","Botsuana","Brasil","Brunéi","Bulgaria","Burkina Faso","Burundi","Bután","Cabo Verde","Camboya","Camerún","Canadá","Catar","Chad","Chile","China","Chipre","Colombia","Comoras","Corea del Norte","Corea del Sur","Costa de Marfil","Costa Rica","Croacia","Cuba","Dinamarca","Dominica","Ecuador","Egipto","El Salvador","Emiratos Árabes Unidos","Eritrea","Eslovaquia","Eslovenia","España","Estados Unidos","Estonia","Esuatini","Etiopía","Filipinas","Finlandia","Fiyi","Francia","Gabón","Gambia","Georgia","Ghana","Granada","Grecia","Guatemala","Guinea","Guinea Ecuatorial","Guinea-Bisáu","Guyana","Haití","Honduras","Hungría","India","Indonesia","Irak","Irán","Irlanda","Islandia","Islas Marshall","Islas Salomón","Israel","Italia","Jamaica","Japón","Jordania","Kazajistán","Kenia","Kirguistán","Kiribati","Kuwait","Laos","Lesoto","Letonia","Líbano","Liberia","Libia","Liechtenstein","Lituania","Luxemburgo","Madagascar","Malasia","Malaui","Maldivas","Malí","Malta","Marruecos","Mauricio","Mauritania","México","Micronesia","Moldavia","Mónaco","Mongolia","Montenegro","Mozambique","Namibia","Nauru","Nepal","Nicaragua","Níger","Nigeria","Noruega","Nueva Zelanda","Omán","Países Bajos","Pakistán","Palaos","Panamá","Papúa Nueva Guinea","Paraguay","Perú","Polonia","Portugal","Reino Unido","República Centroafricana","República Checa","República del Congo","República Democrática del Congo","República Dominicana","Ruanda","Rumanía","Rusia","Samoa","San Cristóbal y Nieves","San Marino","San Vicente y las Granadinas","Santa Lucía","Santo Tomé y Príncipe","Senegal","Serbia","Seychelles","Sierra Leona","Singapur","Siria","Somalia","Sri Lanka","Sudáfrica","Sudán","Sudán del Sur","Suecia","Suiza","Surinam","Tailandia","Tanzania","Tayikistán","Timor Oriental","Togo","Tonga","Trinidad y Tobago","Túnez","Turkmenistán","Turquía","Tuvalu","Ucrania","Uganda","Uruguay","Uzbekistán","Vanuatu","Venezuela","Vietnam","Yemen","Yibuti","Zambia","Zimbabue",
-]
+import { COUNTRIES, TIPOS_PRODUCTO } from "../constants"
 
 interface FormData {
+  codigo: string
   nombre_producto: string
   nombre_original: string
   tipo: string
@@ -40,6 +38,7 @@ interface FormData {
 interface Suplidor {
   id: number
   razon_social: string
+  nombre_comercial?: string
   status: string
 }
 
@@ -54,9 +53,10 @@ export default function RegistrarProductoPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [documentFiles, setDocumentFiles] = useState<File[]>([])
   const [formData, setFormData] = useState<FormData>({
+    codigo: "",
     nombre_producto: "",
     nombre_original: "",
-    tipo: "HOTEL",
+    tipo: "",
     suplidor_id: "0",
     contacto_nombre: "",
     contacto_telefono1: "",
@@ -121,6 +121,15 @@ export default function RegistrarProductoPage() {
       toast({
         title: "Error",
         description: "El nombre original es obligatorio",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!formData.tipo.trim()) {
+      toast({
+        title: "Error",
+        description: "El tipo de producto es obligatorio",
         variant: "destructive",
       })
       return
@@ -202,7 +211,7 @@ export default function RegistrarProductoPage() {
       const emailsJson = [formData.contacto_email1?.trim(), formData.contacto_email2?.trim()].filter(Boolean)
 
       const productoData = {
-        codigo: null,
+        codigo: formData.codigo.trim() || null,
         nombre_producto: formData.nombre_producto.trim(),
         nombre_original: formData.nombre_original.trim(),
         tipo: formData.tipo,
@@ -327,19 +336,29 @@ export default function RegistrarProductoPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
+                    <Label htmlFor="codigo">Código (Opcional)</Label>
+                    <Input
+                      id="codigo"
+                      value={formData.codigo}
+                      onChange={(e) => handleInputChange("codigo", e.target.value)}
+                      placeholder="Código del producto (opcional)"
+                    />
+                  </div>
+
+                  <div>
                     <Label htmlFor="tipo">
                       Tipo <span className="text-red-500">*</span>
                     </Label>
                     <Select value={formData.tipo} onValueChange={(value) => handleInputChange("tipo", value)}>
                       <SelectTrigger id="tipo">
-                        <SelectValue />
+                        <SelectValue placeholder="Seleccionar tipo" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="HOTEL">Hotel</SelectItem>
-                        <SelectItem value="EXCURSION">Excursión</SelectItem>
-                        <SelectItem value="TRANSPORTE">Transporte</SelectItem>
-                        <SelectItem value="RESTAURANTE">Restaurante</SelectItem>
-                        <SelectItem value="OTRO">Otro</SelectItem>
+                        {TIPOS_PRODUCTO.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -399,7 +418,9 @@ export default function RegistrarProductoPage() {
                         <SelectItem value="0">Sin suplidor</SelectItem>
                         {suplidores.map((suplidor) => (
                           <SelectItem key={suplidor.id} value={suplidor.id.toString()}>
-                            {suplidor.razon_social}
+                            {suplidor.nombre_comercial
+                              ? `${suplidor.razon_social} - ${suplidor.nombre_comercial}`
+                              : suplidor.razon_social}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -597,6 +618,7 @@ export default function RegistrarProductoPage() {
                     <SelectContent>
                       <SelectItem value="ACTIVO">Activo</SelectItem>
                       <SelectItem value="INACTIVO">Inactivo</SelectItem>
+                      <SelectItem value="DESCONTINUADO">Descontinuado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
