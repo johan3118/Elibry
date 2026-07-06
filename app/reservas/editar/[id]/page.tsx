@@ -44,6 +44,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import {
   createClient,
+  uploadImage,
   type Cliente,
   type Producto,
   type Suplidor,
@@ -55,6 +56,17 @@ import { useToast } from "@/hooks/use-toast"
 import { useRouter, useParams } from "next/navigation"
 import { useUser } from "@/lib/user-context"
 import { actualizarRegistroProvisional } from "@/lib/provisional-system"
+import { TimeFormatToggle, formatTimeWithPreference } from "@/components/time-format-toggle"
+
+interface Colaborador {
+  id: number
+  nombre: string
+  tipo: string
+  comision: number
+  email?: string
+  telefono?: string
+  status: string
+}
 
 interface DetalleServicio {
   id?: number
@@ -85,12 +97,14 @@ export default function EditarReservaPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [suplidores, setSuplidores] = useState<Suplidor[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [loading, setLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
   const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null)
   const [reservaOriginal, setReservaOriginal] = useState<Reserva | null>(null)
   const [tienePagos, setTienePagos] = useState(false)
   const [archivosAdicionales, setArchivosAdicionales] = useState<File[]>([])
+  const [is24HourFormat, setIs24HourFormat] = useState(true)
 
   const [detallesServicios, setDetallesServicios] = useState<DetalleServicio[]>([
     {
@@ -109,7 +123,6 @@ export default function EditarReservaPage() {
   // Archivos
   const [facturaClienteFile, setFacturaClienteFile] = useState<File | null>(null)
   const [facturaProveedorFile, setFacturaProveedorFile] = useState<File | null>(null)
-  const [archivoExtraFile, setArchivoExtraFile] = useState<File | null>(null)
 
   const { toast } = useToast()
   const router = useRouter()
@@ -183,6 +196,9 @@ export default function EditarReservaPage() {
             // Recalcular subtotal y total al cargar
             const subtotal = precioUnitario
             const total = subtotal - descuento
+            // Preserva "N/A" (habitaciones nulo/0/no aplica) en vez de forzarlo a 1
+            // (Bug: null se convertia en 1, corrompiendo el conteo de habitaciones)
+            const habitacionesRaw = (detalle as any).habitaciones
             return {
               id: detalle.id,
               concepto: detalle.concepto || "",
@@ -193,7 +209,7 @@ export default function EditarReservaPage() {
               total: Math.max(0, total),
               noches: detalle.noches || 1,
               pasajeros: detalle.pasajeros || 1,
-              habitaciones: detalle.habitaciones || 1,
+              habitaciones: habitacionesRaw && habitacionesRaw > 0 ? habitacionesRaw : "N/A",
             }
           })
           setDetallesServicios(detallesFormateados)
@@ -201,6 +217,7 @@ export default function EditarReservaPage() {
           // Si no hay detalles guardados, crear uno con los datos de la reserva
           const precioTotal = reservaData.precio_total || 0
           const descuentoReserva = reservaData.descuento || 0
+          const habitacionesReservaRaw = (reservaData as any).habitaciones
           setDetallesServicios([{
             concepto: "Servicio Principal",
             descripcion: "",
@@ -210,7 +227,7 @@ export default function EditarReservaPage() {
             total: precioTotal,
             noches: 1,
             pasajeros: reservaData.pasajeros || 1,
-            habitaciones: reservaData.habitaciones || 1,
+            habitaciones: habitacionesReservaRaw && habitacionesReservaRaw > 0 ? habitacionesReservaRaw : "N/A",
           }])
         }
 
@@ -247,6 +264,24 @@ export default function EditarReservaPage() {
           setSuplidores(suplidoresData || [])
         }
 
+        // Cargar colaboradores (para el selector de Referido Por, igual que en crear)
+        const { data: colaboradoresData, error: colaboradoresError } = await (supabase as any)
+          .from("colaboradores")
+          .select("*")
+          .eq("status", "ACTIVO")
+          .order("nombre", { ascending: true })
+
+        if (colaboradoresError) {
+          // Usar datos de ejemplo si la tabla no existe (igual que en crear)
+          setColaboradores([
+            { id: 1, nombre: "María González", tipo: "VENDEDOR", comision: 5, status: "ACTIVO" },
+            { id: 2, nombre: "Carlos Rodríguez", tipo: "AGENTE", comision: 3, status: "ACTIVO" },
+            { id: 3, nombre: "Laura Fernández", tipo: "REFERIDOR", comision: 2, status: "ACTIVO" },
+          ])
+        } else {
+          setColaboradores(colaboradoresData || [])
+        }
+
         // El proveedor se guarda como razon_social; mapearlo de vuelta a su id
         // para que el combobox lo muestre seleccionado. Si no coincide con ningun
         // suplidor activo, se conserva el texto guardado.
@@ -255,6 +290,12 @@ export default function EditarReservaPage() {
           (s: Suplidor) => s.razon_social === proveedorGuardado,
         )
         const proveedorValue = proveedorMatch ? proveedorMatch.id.toString() : proveedorGuardado
+
+        // Legacy records may still carry the old "A LA ESP CONF" value (before it was
+        // canonicalized to match crear/page.tsx's "A LA ESPERA CONF"); normalize it here
+        // so the Select shows the matching option instead of rendering blank.
+        const proformaGuardada = (reservaData as any).proforma
+        const proformaValue = proformaGuardada === "A LA ESP CONF" ? "A LA ESPERA CONF" : proformaGuardada || ""
 
         // Llenar formulario con datos de la reserva
         const cliente = clientesData?.find((c: Cliente) => c.id === reservaData.cliente_id)
@@ -277,7 +318,7 @@ export default function EditarReservaPage() {
           metodoPago: reservaData.metodo_pago || "",
           abonadoContabilidad: reservaData.abonado_contabilidad?.toString() || "",
           proveedor: proveedorValue,
-          proforma: reservaData.proforma || "",
+          proforma: proformaValue,
           comision: reservaData.comision || "NO",
           facturaEnviadaCliente: reservaData.factura_enviada_cliente || "NO",
           facturaRecibidaProveedor: reservaData.factura_recibida_proveedor || "NO",
@@ -485,6 +526,58 @@ export default function EditarReservaPage() {
 
       const totales = calcularTotalesGenerales()
 
+      // Subir archivos adjuntos (factura cliente, factura proveedor, adicionales), igual que en crear.
+      // Si el usuario no selecciona un archivo nuevo, se conserva la URL ya guardada en la reserva
+      // (nunca se sobrescribe un adjunto existente con null).
+      let facturaClienteUrl: string | null = (reservaOriginal as any)?.factura_cliente_url || null
+      let facturaProveedorUrl: string | null = (reservaOriginal as any)?.factura_proveedor_url || null
+      const documentosUrlsExistentes: string[] = (reservaOriginal as any)?.documentos_urls || []
+      const documentosUrlsNuevos: string[] = []
+
+      if (facturaClienteFile) {
+        try {
+          facturaClienteUrl = await uploadImage(facturaClienteFile, "reservas-documentos", facturaClienteFile.name)
+        } catch (error) {
+          console.error("Error subiendo factura cliente:", error)
+          toast({
+            title: "Advertencia",
+            description: "No se pudo subir la factura del cliente. Se conservará el adjunto anterior (si existía).",
+            variant: "destructive",
+          })
+        }
+      }
+
+      if (facturaProveedorFile) {
+        try {
+          facturaProveedorUrl = await uploadImage(facturaProveedorFile, "reservas-documentos", facturaProveedorFile.name)
+        } catch (error) {
+          console.error("Error subiendo factura proveedor:", error)
+          toast({
+            title: "Advertencia",
+            description: "No se pudo subir la factura del proveedor. Se conservará el adjunto anterior (si existía).",
+            variant: "destructive",
+          })
+        }
+      }
+
+      if (archivosAdicionales.length > 0) {
+        for (const file of archivosAdicionales) {
+          try {
+            const url = await uploadImage(file, "reservas-documentos", file.name)
+            if (url) documentosUrlsNuevos.push(url)
+          } catch (error) {
+            console.error("Error subiendo archivo adicional:", error)
+            toast({
+              title: "Advertencia",
+              description: `No se pudo subir el archivo "${file.name}". La reserva continuará sin ese adjunto.`,
+              variant: "destructive",
+            })
+          }
+        }
+      }
+
+      const documentosUrlsFinal = [...documentosUrlsExistentes, ...documentosUrlsNuevos]
+
       // Preparar datos de la reserva
       const reservaData = {
         cliente_id: selectedClienteId,
@@ -516,6 +609,9 @@ export default function EditarReservaPage() {
         proveedor: nombreProveedor ? nombreProveedor.substring(0, 200) : null,
         asientos_bus: formData.asientosBus ? formData.asientosBus.substring(0, 10) : null,
         nota_interna_reserva: formData.notaInternaReserva || null,
+        factura_cliente_url: facturaClienteUrl,
+        factura_proveedor_url: facturaProveedorUrl,
+        documentos_urls: documentosUrlsFinal.length > 0 ? documentosUrlsFinal : null,
         balance_reserva: totales.total,
         balance_abonado: reservaOriginal?.balance_abonado || 0,
         balance_general: totales.total - (reservaOriginal?.balance_abonado || 0),
@@ -729,10 +825,13 @@ export default function EditarReservaPage() {
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => router.push("/reservas/pendientes")} className="flex items-center">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver
-          </Button>
+          <div className="flex items-center space-x-4">
+            <TimeFormatToggle onChange={setIs24HourFormat} />
+            <Button variant="outline" onClick={() => router.push("/reservas/pendientes")} className="flex items-center">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Volver
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -802,12 +901,22 @@ export default function EditarReservaPage() {
 
                 <div>
                   <Label htmlFor="referidoPor">Referido Por</Label>
-                  <Input
-                    id="referidoPor"
+                  <Select
                     value={formData.referidoPor}
-                    onChange={(e) => handleInputChange("referidoPor", e.target.value)}
-                    placeholder="Colaborador/vendedor"
-                  />
+                    onValueChange={(value) => handleInputChange("referidoPor", value === "SIN_REFERIDO" ? "" : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar colaborador..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SIN_REFERIDO">Sin referido</SelectItem>
+                      {colaboradores.map((colaborador) => (
+                        <SelectItem key={colaborador.id} value={colaborador.nombre}>
+                          {colaborador.nombre} ({colaborador.tipo})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
@@ -944,6 +1053,11 @@ export default function EditarReservaPage() {
                     value={formData.horaEntrada}
                     onChange={(e) => handleInputChange("horaEntrada", e.target.value)}
                   />
+                  {formData.horaEntrada && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Formato seleccionado: {formatTimeWithPreference(formData.horaEntrada, is24HourFormat)}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="horaSalida">Hora Salida</Label>
@@ -953,6 +1067,11 @@ export default function EditarReservaPage() {
                     value={formData.horaSalida}
                     onChange={(e) => handleInputChange("horaSalida", e.target.value)}
                   />
+                  {formData.horaSalida && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Formato seleccionado: {formatTimeWithPreference(formData.horaSalida, is24HourFormat)}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -977,6 +1096,7 @@ export default function EditarReservaPage() {
                   <SelectContent>
                     <SelectItem value="PENDIENTE">Pendiente</SelectItem>
                     <SelectItem value="COMPLETADA">Completada</SelectItem>
+                    <SelectItem value="ANULADA">Anulada</SelectItem>
                   </SelectContent>
                   </Select>
                 </div>
@@ -1207,7 +1327,7 @@ export default function EditarReservaPage() {
                       <SelectValue placeholder="Seleccionar estado" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="A LA ESP CONF">A LA ESP CONF</SelectItem>
+                      <SelectItem value="A LA ESPERA CONF">A LA ESPERA CONF</SelectItem>
                       <SelectItem value="PROFORMA">PROFORMA</SelectItem>
                       <SelectItem value="VOUCHER">VOUCHER</SelectItem>
                     </SelectContent>
