@@ -87,7 +87,6 @@ export default function FacturaFiscalPage() {
   const [formData, setFormData] = useState({
     reserva_id: "",
     tipoComprobante: "B01",
-    condicionPago: "contado",
     observaciones: "",
   })
 
@@ -233,7 +232,7 @@ export default function FacturaFiscalPage() {
     return ""
   }
 
-  const generateFacturaFiscalHTML = (): string => {
+  const generateFacturaFiscalHTML = (ncfGenerado: string, numeroFactura: string): string => {
     if (!selectedReserva || !selectedCliente || !selectedProducto) return ""
 
     const subtotal = calcularSubtotal()
@@ -241,8 +240,6 @@ export default function FacturaFiscalPage() {
     const propinaLegal = calcularPropinaLegal()
     const total = calcularTotal()
     const fechaEmision = format(date, "dd-MMM-yyyy", { locale: es })
-    const ncfGenerado = generateNCF(formData.tipoComprobante)
-    const numeroFactura = generateNumeroFactura()
 
     // Formatear información del cliente
     const clienteNombre = formatClienteName(selectedCliente)
@@ -573,7 +570,17 @@ export default function FacturaFiscalPage() {
                 </tr>
             </tbody>
         </table>
-        
+        ${
+          formData.observaciones
+            ? `
+        <div class="observaciones-section" style="padding: 15px; border-bottom: 2px dotted #000;">
+            <div class="info-label">OBSERVACIONES:</div>
+            <div class="info-value">${formData.observaciones}</div>
+        </div>
+        `
+            : ""
+        }
+
         <div class="footer">
             <div class="signature-section">
                 <div class="signature-title">Preparado por:</div>
@@ -686,8 +693,9 @@ export default function FacturaFiscalPage() {
       setFacturas((prev) => [savedFactura, ...prev])
     }
 
-    // Generar y mostrar la factura
-    const html = generateFacturaFiscalHTML()
+    // Generar y mostrar la factura reutilizando el MISMO NCF que se acaba de guardar,
+    // para que el NCF persistido y el impreso sean siempre idénticos (F1)
+    const html = generateFacturaFiscalHTML(ncfGenerado, numeroFactura)
     const newWindow = window.open("", "_blank", "width=900,height=700,scrollbars=yes,resizable=yes")
 
     if (newWindow) {
@@ -714,7 +722,10 @@ export default function FacturaFiscalPage() {
       return
     }
 
-    const html = generateFacturaFiscalHTML()
+    // Generar el NCF UNA sola vez para este documento descargado (F1)
+    const ncfGenerado = generateNCF(formData.tipoComprobante)
+    const numeroFactura = generateNumeroFactura()
+    const html = generateFacturaFiscalHTML(ncfGenerado, numeroFactura)
     const blob = new Blob([html], { type: "text/html" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")

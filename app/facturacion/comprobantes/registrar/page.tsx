@@ -12,9 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Receipt, Save, ArrowLeft, Calculator, FileText, Calendar, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase"
+import { useToast } from "@/hooks/use-toast"
 
 export default function RegistrarBloqueComprobantePage() {
   const router = useRouter()
+  const { toast } = useToast()
+  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     tipo_comprobante: "",
@@ -75,11 +79,39 @@ export default function RegistrarBloqueComprobantePage() {
         usuario_registro: "admin", // En producción, obtener del usuario autenticado
       }
 
-      alert("Bloque de comprobantes registrado exitosamente")
+      if (!supabase) {
+        toast({
+          title: "Error",
+          description: "No se pudo conectar con la base de datos.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const { error } = await supabase.from("comprobantes_disponibles").insert([dataToInsert] as never[])
+
+      if (error) {
+        console.error("Error registrando bloque de comprobantes:", error)
+        toast({
+          title: "Error",
+          description: `No se pudo registrar el bloque de comprobantes: ${error.message}`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Éxito",
+        description: "Bloque de comprobantes registrado exitosamente",
+      })
       router.push("/facturacion/comprobantes")
     } catch (error) {
       console.error("Error:", error)
-      alert("Error inesperado al registrar el bloque de comprobantes")
+      toast({
+        title: "Error",
+        description: "Error inesperado al registrar el bloque de comprobantes",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
