@@ -683,10 +683,10 @@ export default function RegistrarPagoPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="observaciones">Observaciones</Label>
+                  <Label htmlFor="observaciones">Notas</Label>
                   <Textarea
                     id="observaciones"
-                    placeholder="Observaciones adicionales sobre el pago"
+                    placeholder="Notas adicionales sobre el pago"
                     value={formData.observaciones}
                     onChange={(e) => handleInputChange("observaciones", e.target.value)}
                     rows={3}

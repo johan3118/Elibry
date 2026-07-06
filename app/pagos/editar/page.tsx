@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { formatDateDMY } from "@/lib/utils"
+import { useUser } from "@/lib/user-context"
 
 interface Pago {
   id: string
@@ -46,6 +47,7 @@ export default function EditarPagoPage() {
   const searchParams = useSearchParams()
   const pagoId = searchParams.get("id")
   const { toast } = useToast()
+  const { user } = useUser()
 
   const [loadingData, setLoadingData] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -127,6 +129,7 @@ export default function EditarPagoPage() {
         notas: formData.notas || null,
         estado: formData.estado,
         editado_en: new Date().toISOString(),
+        editado_por: user?.nombre || "Usuario Sistema",
       }
 
       const { error } = await (supabase.from("pagos") as ReturnType<typeof supabase.from>).update(updatePayload).eq("id", pagoId)
@@ -317,11 +320,10 @@ export default function EditarPagoPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ACTIVO">Activo</SelectItem>
-                      <SelectItem value="PENDIENTE">Pendiente</SelectItem>
-                      <SelectItem value="PROCESADO">Procesado</SelectItem>
-                      <SelectItem value="COMPLETADO">Completado</SelectItem>
-                      <SelectItem value="CANCELADO">Cancelado</SelectItem>
                       <SelectItem value="ANULADO">Anulado</SelectItem>
+                      {formData.estado && !["ACTIVO", "ANULADO"].includes(formData.estado) && (
+                        <SelectItem value={formData.estado}>{formData.estado}</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
