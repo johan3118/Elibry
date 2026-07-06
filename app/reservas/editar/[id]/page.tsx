@@ -79,6 +79,7 @@ export default function EditarReservaPage() {
   const [fechaGastosProveedor, setFechaGastosProveedor] = useState<Date>()
   const [showFechaSalidaPicker, setShowFechaSalidaPicker] = useState(false)
   const [productosOpen, setProductosOpen] = useState(false)
+  const [suplidoresOpen, setSuplidoresOpen] = useState(false)
   const [searchCliente, setSearchCliente] = useState("")
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -246,6 +247,15 @@ export default function EditarReservaPage() {
           setSuplidores(suplidoresData || [])
         }
 
+        // El proveedor se guarda como razon_social; mapearlo de vuelta a su id
+        // para que el combobox lo muestre seleccionado. Si no coincide con ningun
+        // suplidor activo, se conserva el texto guardado.
+        const proveedorGuardado = (reservaData as any).proveedor || ""
+        const proveedorMatch = suplidoresData?.find(
+          (s: Suplidor) => s.razon_social === proveedorGuardado,
+        )
+        const proveedorValue = proveedorMatch ? proveedorMatch.id.toString() : proveedorGuardado
+
         // Llenar formulario con datos de la reserva
         const cliente = clientesData?.find((c: Cliente) => c.id === reservaData.cliente_id)
         if (cliente) {
@@ -266,7 +276,7 @@ export default function EditarReservaPage() {
           atendidoPor: reservaData.atendido_por || "",
           metodoPago: reservaData.metodo_pago || "",
           abonadoContabilidad: reservaData.abonado_contabilidad?.toString() || "",
-          proveedor: reservaData.proveedor || "",
+          proveedor: proveedorValue,
           proforma: reservaData.proforma || "",
           comision: reservaData.comision || "NO",
           facturaEnviadaCliente: reservaData.factura_enviada_cliente || "NO",
@@ -1219,18 +1229,53 @@ export default function EditarReservaPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <Label htmlFor="proveedor">Proveedor</Label>
-                  <Select value={formData.proveedor} onValueChange={(value) => handleInputChange("proveedor", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar proveedor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suplidores.map((suplidor) => (
-                        <SelectItem key={suplidor.id} value={suplidor.id.toString()}>
-                          {suplidor.razon_social}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={suplidoresOpen} onOpenChange={setSuplidoresOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={suplidoresOpen}
+                        className="w-full justify-between font-normal"
+                      >
+                        <span className="truncate">
+                          {formData.proveedor
+                            ? (() => {
+                                const s = suplidores.find((s) => s.id.toString() === formData.proveedor)
+                                return s ? s.razon_social : formData.proveedor
+                              })()
+                            : "Seleccionar proveedor"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Buscar proveedor..." />
+                        <CommandList>
+                          <CommandEmpty>No se encontraron proveedores.</CommandEmpty>
+                          <CommandGroup>
+                            {suplidores.map((suplidor) => (
+                              <CommandItem
+                                key={suplidor.id}
+                                value={suplidor.razon_social}
+                                onSelect={() => {
+                                  handleInputChange("proveedor", suplidor.id.toString())
+                                  setSuplidoresOpen(false)
+                                }}
+                              >
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    formData.proveedor === suplidor.id.toString() ? "opacity-100" : "opacity-0"
+                                  }`}
+                                />
+                                {suplidor.razon_social}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div>
