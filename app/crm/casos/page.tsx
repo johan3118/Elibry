@@ -128,6 +128,18 @@ const fallbackComentarios: SeguimientoComentario[] = [
   },
 ]
 
+// Pure helper: builds the optimistic patch applied to a case when it is closed.
+// Exported so the omission of comentario_cierre (CR2) can be covered by a unit test
+// without needing to render the client component.
+export function buildCierreOptimista(cerradoPor: string, fechaCierre: string, comentarioCierre: string) {
+  return {
+    estado: "CERRADO" as const,
+    cerrado_por: cerradoPor,
+    fecha_cierre: fechaCierre,
+    comentario_cierre: comentarioCierre || undefined,
+  }
+}
+
 export default function CRMCasosPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -407,8 +419,8 @@ export default function CRMCasosPage() {
   const handleCloseCaso = async (casoId: number) => {
     const cerradoPor = user?.nombre ?? user?.email ?? "Desconocido"
     const fechaCierreLocal = new Date().toISOString()
-    const casoCerrado = { estado: "CERRADO" as const, cerrado_por: cerradoPor, fecha_cierre: fechaCierreLocal }
-    
+    const casoCerrado = buildCierreOptimista(cerradoPor, fechaCierreLocal, comentarioCierre)
+
     // Actualizar el array de casos
     setCasos(
       casos.map((caso) =>
@@ -600,12 +612,12 @@ export default function CRMCasosPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="empresa">Solicitante</Label>
+                  <Label htmlFor="empresa">Empresa / Distribuidor</Label>
                   <Input
                     id="empresa"
                     value={nuevoCaso.empresa_distribuidor}
                     onChange={(e) => setNuevoCaso({ ...nuevoCaso, empresa_distribuidor: e.target.value })}
-                    placeholder="Nombre del solicitante"
+                    placeholder="Nombre de la empresa"
                   />
                 </div>
                 <div>
