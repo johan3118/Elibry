@@ -39,6 +39,8 @@ import {
   Info,
   Check,
   ChevronsUpDown,
+  ExternalLink,
+  File,
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -1505,6 +1507,62 @@ export default function EditarReservaPage() {
                   />
                 </div>
               </div>
+
+              {/* Documentos adjuntos existentes */}
+              {(() => {
+                const documentos: { label: string; url: string }[] = []
+                const facturaClienteUrl = (reservaOriginal as any)?.factura_cliente_url
+                const facturaProveedorUrl = (reservaOriginal as any)?.factura_proveedor_url
+                const documentosUrls: string[] = (reservaOriginal as any)?.documentos_urls || []
+                if (facturaClienteUrl) {
+                  documentos.push({ label: "Factura Cliente", url: facturaClienteUrl })
+                }
+                if (facturaProveedorUrl) {
+                  documentos.push({ label: "Factura Proveedor", url: facturaProveedorUrl })
+                }
+                documentosUrls.forEach((url, i) => {
+                  documentos.push({ label: `Documento ${i + 1}`, url })
+                })
+
+                if (documentos.length === 0) return null
+
+                return (
+                  <div className="mt-4">
+                    <Label>Documentos Adjuntos Actuales</Label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Documentos ya adjuntos a esta reserva. Los archivos que suba abajo se agregarán a estos.
+                    </p>
+                    <div className="space-y-2">
+                      {documentos.map((doc, i) => {
+                        const name = doc.url.split("/").pop()?.split("?")[0] || doc.url
+                        const isPdf = doc.url.toLowerCase().includes(".pdf")
+                        return (
+                          <a
+                            key={i}
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                          >
+                            <div className="flex items-center space-x-3">
+                              {isPdf ? (
+                                <FileText className="w-5 h-5 text-red-500" />
+                              ) : (
+                                <File className="w-5 h-5 text-blue-500" />
+                              )}
+                              <div>
+                                <p className="text-sm font-medium text-gray-700">{doc.label}</p>
+                                <p className="text-xs text-gray-500 truncate max-w-xs">{name}</p>
+                              </div>
+                            </div>
+                            <ExternalLink className="w-4 h-4 text-gray-400 shrink-0" />
+                          </a>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Archivos adicionales condicionales */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">

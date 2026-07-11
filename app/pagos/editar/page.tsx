@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Save, CreditCard, ArrowLeft, DollarSign } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Save, CreditCard, ArrowLeft, DollarSign, Search, Pencil } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
@@ -52,6 +54,8 @@ export default function EditarPagoPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [saving, setSaving] = useState(false)
   const [pago, setPago] = useState<Pago | null>(null)
+  const [pagosList, setPagosList] = useState<Pago[]>([])
+  const [listSearch, setListSearch] = useState("")
   const [formData, setFormData] = useState<FormData>({
     monto: "",
     metodo_pago: "",
@@ -66,10 +70,37 @@ export default function EditarPagoPage() {
     if (pagoId) {
       cargarPago(pagoId)
     } else {
-      setLoadingData(false)
+      cargarPagosList()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagoId])
+
+  const cargarPagosList = async () => {
+    try {
+      setLoadingData(true)
+      const { data, error } = await supabase
+        .from("pagos")
+        .select("*")
+        .order("fecha_pago", { ascending: false })
+
+      if (error) {
+        console.error("Error cargando pagos:", error)
+        toast({ title: "Error al cargar pagos", description: error.message, variant: "destructive" })
+        return
+      }
+
+      setPagosList((data as Pago[]) || [])
+    } catch (error) {
+      console.error("Error:", error)
+      toast({
+        title: "Error al cargar pagos",
+        description: error instanceof Error ? error.message : "Error inesperado al cargar los pagos",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingData(false)
+    }
+  }
 
   const cargarPago = async (id: string) => {
     try {
@@ -164,7 +195,125 @@ export default function EditarPagoPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando pago...</p>
+          <p className="mt-4 text-gray-600">{pagoId ? "Cargando pago..." : "Cargando pagos..."}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // No id in the URL: show a picker so the user can choose which payment to edit.
+  if (!pagoId) {
+    const pagosFiltrados = pagosList.filter((p) => {
+      const q = listSearch.toLowerCase()
+      return (
+        (p.concepto ?? "").toLowerCase().includes(q) ||
+        (p.referencia ?? "").toLowerCase().includes(q) ||
+        (p.id?.toString() ?? "").includes(listSearch) ||
+        (p.reserva_id?.toString() ?? "").includes(listSearch)
+      )
+    })
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/pagos")}
+              className="text-gray-600 hover:text-blue-600"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Volver a Pagos
+            </Button>
+            <div className="flex items-center space-x-2">
+              <CreditCard className="w-6 h-6 text-blue-600" />
+              <div>
+                <h1 className="text-2xl font-bold text-blue-600">Editar Pago</h1>
+                <p className="text-sm text-gray-500">Seleccione el pago que desea editar</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="p-6 max-w-5xl mx-auto space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-green-600">Buscar Pago</CardTitle>
+              <CardDescription>Buscar por concepto, referencia, ID o reserva</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Buscar pago..."
+                  value={listSearch}
+                  onChange={(e) => setListSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-blue-600">Lista de Pagos ({pagosFiltrados.length})</CardTitle>
+              <CardDescription>Haga clic en editar para modificar un pago</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {pagosFiltrados.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No hay pagos</h3>
+                  <p className="text-gray-500">
+                    {listSearch ? "No se encontraron pagos con la búsqueda aplicada." : "No hay pagos registrados."}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Reserva</TableHead>
+                        <TableHead>Monto</TableHead>
+                        <TableHead>Método</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagosFiltrados.map((p) => (
+                        <TableRow key={p.id} className="hover:bg-gray-50">
+                          <TableCell className="font-medium">{p.id}</TableCell>
+                          <TableCell>{p.reserva_id}</TableCell>
+                          <TableCell className="font-medium text-green-600">{p.monto}</TableCell>
+                          <TableCell>{p.metodo_pago}</TableCell>
+                          <TableCell>{p.fecha_pago ? formatDateDMY(p.fecha_pago) : "N/A"}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{p.concepto}</TableCell>
+                          <TableCell>
+                            <Badge className="bg-gray-100 text-gray-800">{p.estado}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/pagos/editar?id=${p.id}`)}
+                              className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     )
@@ -175,8 +324,8 @@ export default function EditarPagoPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600">Pago no encontrado</p>
-          <Button className="mt-4 bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/pagos")}>
-            Volver a Pagos
+          <Button className="mt-4 bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/pagos/editar")}>
+            Volver a Editar Pago
           </Button>
         </div>
       </div>
