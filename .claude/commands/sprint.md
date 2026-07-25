@@ -39,12 +39,51 @@ A sprint where any task shows no qa(...) + lead(...) in the transcript
 is automatically INVALID.
 
 ═══════════════════════════════════════════════════════════
+STEP 0 — BRAIN BRIEFING (READ the brain: pull the past + the vectors)
+═══════════════════════════════════════════════════════════
+
+The @import loads the brain index, but an imported index is not the same as
+USING the brain — and a subagent may not even inherit the import. So YOU
+(orchestrator) assemble the relevant brain context and PASS it to product and
+architect. Do NOT assume they will go read it themselves.
+
+Read/grep ONLY what's relevant to the goal ($ARGUMENTS) — never dump the vault.
+Read and Grep are fine here; Bash is not. Pull:
+
+1. PAST INFO
+   - Current state → ~/Developer/CBrain/projects/elibry.md ("Current state").
+   - Recent history → any ~/Developer/CBrain/sprints/elibry-* digests (and
+     ~/Developer/CBrain/sprints/elibry-planned-sprints.md for planned work).
+2. VECTORS (the negative space — what steers the spec away from waste)
+   - Relevant DECISIONS incl. their REJECTED alternatives → grep the goal's key
+     terms in ~/Developer/CBrain/decisions/.
+   - Relevant MISTAKES + prevention rules → grep the goal's terms in
+     ~/Developer/CBrain/mistakes/.
+   - For fiscal work, the DGII e-CF domain → ~/Developer/CBrain/domains/dgii-ecf.md.
+   - The matching TOPIC hub, if any → ~/Developer/CBrain/topics/ (e.g. multi-tenancy).
+
+Assemble a compact BRAIN BRIEFING — bullets, one line each, NOT full notes. Paste
+this SAME block into Step 1 (product) and Step 2 (architect). This is the read
+path made ACTIVE: the brain reaches the agents that propose. If the grep finds
+nothing relevant, say "BRAIN BRIEFING: nothing on record for this area" — do not
+fabricate.
+
+═══════════════════════════════════════════════════════════
 STEP 1 — SPEC
 ═══════════════════════════════════════════════════════════
 
 Invoke the product agent:
 
-product("Turn this sprint goal into a frozen spec: $ARGUMENTS")
+product("Ultrathink, then turn this sprint goal into a frozen spec: $ARGUMENTS
+
+      [paste the STEP 0 BRAIN BRIEFING here — verbatim]
+
+      Use the briefing as ground truth: do NOT spec anything already shipped;
+      do NOT re-open a settled non-goal or re-propose an ADR-rejected option;
+      fold every relevant prevention rule into Non-goals/Risks. Fiscal (NCF /
+      e-CF) changes are high-stakes — flag them as a Risk + human gate. If the
+      briefing shows the goal is already done, blocked, or settled, say so as an
+      Open Question instead of speccing around it.")
 
 Show me the full spec output.
 
@@ -61,13 +100,22 @@ After spec approval, invoke the architect:
 
 architect("Inspect the real codebase and produce a task list for:
 [paste approved spec here].
+
+             [paste the STEP 0 BRAIN BRIEFING here — verbatim, so your approaches
+             respect it. Do NOT re-propose an ADR-rejected option or re-walk a
+             known mistake without new evidence; your elibry-architecture-thinking
+             skill does the deeper grep.]
+
 Output to docs/plans/[short-feature-slug].md
 Your last line must be exactly:
 PLAN_PATH: docs/plans/[exact-filename-you-used].md
 
              Include: task name, owner (senior/junior), acceptance
              criteria, files in scope (exact paths), DB/RLS changes,
-             dependencies between tasks.")
+             dependencies between tasks.
+             For any task whose area matches a briefing mistake or pattern,
+             name that prevention rule in the task's own acceptance criteria —
+             so the dev gets the guardrail in its delegation prompt.")
 
 After architect finishes:
 
@@ -287,13 +335,84 @@ Read it for full context before writing the summary.
         1. What shipped (feature list, user-facing changes)
         2. Evidence (commands run + results, one line per task)
         3. What was deferred (tasks skipped or descoped, with reason)
-        4. Rollback path (how to undo this sprint end-to-end)")
+        4. Rollback path (how to undo this sprint end-to-end)
+
+        Then APPEND this sprint to MEMORY/project_sprint_state.md (date, what
+        shipped, files/commits) and update the 'as of [date]' line. Your LAST
+        line must be exactly: STATE WRITTEN — [what you appended]
+        (or STATE WRITE FAILED — [reason]).")
 
 Show me the lead's summary.
 
-⛔ SPRINT END GATE: If any task does not have a lead decision A logged,
-write "SPRINT INCOMPLETE — missing lead approval for: [task list]"
-and stop.
+── 4a. VERIFY STATE WRITTEN ────────────────────────────
+
+Look at the lead's LAST line:
+- "STATE WRITTEN — ..." → proceed to Step 5.
+- "STATE WRITE FAILED — ..." → ⛔ surface to me (likely MEMORY/ missing or no write access).
+- NEITHER present → reinvoke lead ONCE for the missing line; still absent → ⛔ surface to me.
+
+═══════════════════════════════════════════════════════════
+STEP 5 — BRAIN CONSOLIDATION (WRITE the brain: it expands itself)
+═══════════════════════════════════════════════════════════
+
+After state is written, invoke the lead ONCE more to write this sprint back into
+the shared brain (~/Developer/CBrain). The brain gets DIGESTS + the negative
+space — NOT copies of the plan or state file (those stay canonical in the repo;
+see ~/Developer/CBrain/decisions/0008-sprint-history-in-brain.md).
+
+lead("Sprint shipped and state written. Consolidate it into the shared brain at
+      ~/Developer/CBrain, following ~/Developer/CBrain/meta/consolidation.md. Do ALL:
+
+      1. SPRINT DIGEST — write ~/Developer/CBrain/sprints/elibry-<slug>.md: a SHORT
+         digest (frontmatter type: sprint + date; What shipped; Evidence;
+         Deferred/gates; Source pointer to MEMORY/project_sprint_state.md + plan).
+         Add it to the Elibry section of ~/Developer/CBrain/sprints/sprints.md — if
+         that section still says 'no completed-sprint log yet', convert it to a real
+         dated table with this as the first row.
+
+      2. MISTAKES (the whole point) — send-back log for this sprint:
+         [paste every 'B — SEND BACK' you logged: task -> what QA caught -> fix].
+         For EACH real-bug send-back: grep ~/Developer/CBrain/mistakes first. If it
+         recurs, UPDATE that mistake (add the instance, harden the rule). If new,
+         create ~/Developer/CBrain/mistakes/<slug>.md from mistake-template + add a
+         row to mistakes.md.
+
+      3. NEGATIVE-SPACE AUDIT — did this sprint re-implement an ADR-rejected option
+         or re-trigger a known mistake? Note it. If a genuine durable fork was
+         decided (especially anything fiscal / NCF / e-CF), record an ADR at
+         ~/Developer/CBrain/decisions/NNNN-slug.md with its rejected alternatives.
+
+      4. PROJECT STATE — update 'Current state' in
+         ~/Developer/CBrain/projects/elibry.md (durable summary only).
+
+      5. LOG — append one dated line to ~/Developer/CBrain/log.md.
+
+      6. INBOX — process any ~/Developer/CBrain/inbox/ captures.
+
+      Source ONLY from your summary, the QA send-backs, the state file, and the
+      plan — never invent. Keep digests short; the repo stays canonical. You have
+      Write but no Bash — do NOT git commit; that is a human/CI step.
+
+      Your LAST line must be exactly:
+      BRAIN CONSOLIDATED — [digest slug]; [N] mistakes filed/updated; [ADR or none]
+      or: BRAIN CONSOLIDATION FAILED — [reason]")
+
+── 5a. VERIFY BRAIN CONSOLIDATION ──────────────────────
+
+- "BRAIN CONSOLIDATED — ..." → proceed to the SPRINT END GATE.
+- "BRAIN CONSOLIDATION FAILED — ..." → ⛔ surface to me.
+- NEITHER present → reinvoke lead ONCE; still absent → ⛔ surface to me.
+
+═══════════════════════════════════════════════════════════
+SPRINT END GATE
+═══════════════════════════════════════════════════════════
+
+⛔ Before declaring the sprint complete, verify ALL THREE:
+1. Every task has a lead decision A logged.
+2. The transcript contains "STATE WRITTEN" (lead, Step 4).
+3. The transcript contains "BRAIN CONSOLIDATED" (lead, Step 5 — the brain expanded).
+If any is missing → write "SPRINT INCOMPLETE — [which token/approval is missing]"
+and stop. Only when all three are true: declare the sprint complete.
 
 ═══════════════════════════════════════════════════════════
 GLOBAL RULES

@@ -1,3 +1,6 @@
+import type { ConfirmacionData } from "./confirmacion-data"
+import { html, renderHtml } from "./html-escape"
+
 export interface VoucherData {
   cliente: {
     nombre: string
@@ -912,6 +915,682 @@ export function generateProformaHTML(data: ProformaData): string {
     </body>
     </html>
   `
+}
+
+/**
+ * generateConfirmacionHTML — CONFIRMACIÓN DE SERVICIOS, rendered ONLY from the
+ * validated `ConfirmacionData` contract (lib/confirmacion-data.ts, Task T5,
+ * approved). Task T6, docs/plans/geb-documents-real-data.md.
+ *
+ * WHY THIS IS A NEW FUNCTION AND generateProformaHTML ABOVE IS UNTOUCHED
+ * (T3 AC-4's pre-authorised split fallback — this is the fallback firing):
+ * generateProformaHTML is consumed TODAY by the live `/facturacion/proforma`
+ * route (shipped in the F1-F5 merge) and is pinned byte-for-byte by
+ * `tests/proforma-snapshot.test.ts` (T3) for a fixed `ProformaData` fixture.
+ * `ProformaData` and `ConfirmacionData` are structurally incompatible —
+ * different field names, different shapes (`items[]` vs `lineas[]`,
+ * `cliente.telefono` vs `whatsapp`, no `moneda`, etc.) — so there is no way
+ * to repoint `generateProformaHTML` at `ConfirmacionData` and still produce
+ * byte-identical output against the committed baseline; the two contracts
+ * do not even share an id space (compare the baseline's random
+ * `ID CLIENTE: 1900` against a real `ConfirmacionData.idCliente`). Rather
+ * than edit the baseline (forbidden by T3 AC-4) or silently regress the live
+ * route, `generateProformaHTML` is left byte-for-byte unchanged above, and
+ * this new function carries every fix. `app/facturacion/proforma/page.tsx`
+ * is repointed at `generateConfirmacionHTML` in T8 (out of this task's file
+ * scope: lib/document-generator.tsx only).
+ *
+ * BLOCK-NEVER-DEFAULT (mistakes/stockin-zero-price): every fabrication listed
+ * in docs/plans/geb-documents-real-data.md §0 is deleted here — no
+ * `Math.random()`, no `new Date()` standing in for a real date, no hardcoded
+ * "N/A"/"1"/name/FX-multiplier. `buildConfirmacionData` (T5) has already
+ * proven every REQUIRED field present before this function ever runs, so
+ * there is no `||`/`??` fallback anywhere below for a required field —
+ * `observaciones` and `referidoPor` are the only optional fields (T5 AC-4)
+ * and both already default to `""` inside the builder, never here.
+ *
+ * MONEY FORMATTING NOTE (flagged for T10's full fidelity walk): the source
+ * .docx's DETALLE/SUB_TOTAL/DESC_TOTAL/TOTAL/MONTO PAGADO/BALANCE RESERVA
+ * cells are plain thousands-separated numbers with NO currency symbol (e.g.
+ * "1,370.00") — the "US $100.00" text visible near the top DETALLE row is
+ * part of that line's free-text description ("...POR PERSONA Y POR NOCHE"),
+ * not a formatted PRECIO/DESC/TOTAL cell. `ConfirmacionData` also carries no
+ * `moneda` field for these rows (BALANCE GENERAL RD $ / US $ are already
+ * currency-bucketed by the T4 helpers into separate fields), so a
+ * currency-styled `Intl.NumberFormat` would require inventing a currency
+ * code — exactly the class of fabrication this task removes. `fmtMonto`
+ * below renders plain formatted numbers instead, matching the .docx.
+ */
+export function generateConfirmacionHTML(data: ConfirmacionData): string {
+  const MESES_ES = [
+    "ENERO",
+    "FEBRERO",
+    "MARZO",
+    "ABRIL",
+    "MAYO",
+    "JUNIO",
+    "JULIO",
+    "AGOSTO",
+    "SEPTIEMBRE",
+    "OCTUBRE",
+    "NOVIEMBRE",
+    "DICIEMBRE",
+  ]
+
+  // "YYYY-MM-DD" (or any Date-parseable) ConfirmacionData date string ->
+  // the source .docx's "17-ABRIL-2025" shape. checkIn/checkOut/fechaReserva
+  // are REQUIRED and already validated non-blank by buildConfirmacionData —
+  // no fallback here for a malformed value; that would be an upstream defect.
+  const fmtFecha = (iso: string): string => {
+    const d = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`)
+    return `${String(d.getDate()).padStart(2, "0")}-${MESES_ES[d.getMonth()]}-${d.getFullYear()}`
+  }
+
+  // "HH:MM"[:SS] 24h ConfirmacionData time string -> the .docx's "03:00 PM"
+  // 12h shape. horaEntrada/horaSalida are REQUIRED and already validated.
+  const fmtHora = (hora: string): string => {
+    const [hStr, mStr] = hora.split(":")
+    const h24 = Number.parseInt(hStr, 10)
+    const suffix = h24 >= 12 ? "PM" : "AM"
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+    return `${String(h12).padStart(2, "0")}:${mStr.padStart(2, "0")} ${suffix}`
+  }
+
+  // Plain thousands-separated 2-decimal number, no currency symbol — see the
+  // MONEY FORMATTING NOTE in this function's header comment.
+  const fmtMonto = (n: number): string =>
+    new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+
+  // "1) 2) 3)…" by orden (T6 AC-4) — zero rows renders the section with no
+  // lines and no invented placeholder (no fake "1)", no "Bryan Méndez").
+  const pasajerosOrdenados = [...data.pasajeros].sort((a, b) => a.orden - b.orden)
+
+  return renderHtml(html`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Confirmación de Servicios - Reserva ${data.idReserva}</title>
+      <style>
+        @page {
+          size: A4;
+          margin: 0;
+        }
+
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background: white;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        .page {
+          width: 210mm;
+          min-height: 297mm;
+          padding: 0;
+          margin: 0 auto;
+          background: white;
+          page-break-after: always;
+          position: relative;
+        }
+
+        .page:last-child {
+          page-break-after: avoid;
+        }
+
+        /* Page 2 - Confirmación Content */
+        .proforma-page {
+          padding: 20px;
+          position: relative;
+        }
+
+        .header-logo {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          width: 100px;
+          height: 60px;
+          background: url('/public/images/ellibry-logo.png') no-repeat center;
+          background-size: contain;
+        }
+
+        .confirmation-badge {
+          position: absolute;
+          top: 20px;
+          right: 140px;
+          background: #666;
+          color: white;
+          padding: 8px 15px;
+          font-size: 10px;
+          font-weight: bold;
+        }
+
+        .page-number {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          font-size: 10px;
+          color: #666;
+        }
+
+        .content-section {
+          margin-top: 80px;
+        }
+
+        .info-row {
+          display: flex;
+          margin-bottom: 30px;
+        }
+
+        .client-info, .reservation-info {
+          flex: 1;
+          padding: 0 20px;
+        }
+
+        .section-title {
+          font-size: 14px;
+          font-weight: bold;
+          text-align: center;
+          margin-bottom: 15px;
+          border-bottom: 1px solid #333;
+          padding-bottom: 5px;
+        }
+
+        .info-line {
+          margin-bottom: 1px;
+          font-size: 11px;
+          line-height: 1.2;
+        }
+
+        .info-label {
+          font-weight: bold;
+          display: inline-block;
+          width: 80px;
+        }
+
+        .observations {
+          margin: 20px 0;
+          text-align: center;
+        }
+
+        .observations-title {
+          font-weight: bold;
+          margin-bottom: 10px;
+        }
+
+        .observations-content {
+          font-style: italic;
+          color: #666;
+        }
+
+        .details-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 20px 0;
+        }
+
+        .details-table th,
+        .details-table td {
+          border: 1px solid #333;
+          padding: 8px;
+          text-align: center;
+          font-size: 11px;
+        }
+
+        .details-table th {
+          background: #d1d5db;
+          font-weight: bold;
+          color: #374151;
+        }
+
+        .details-table td:first-child {
+          text-align: center;
+        }
+
+        .totals-section {
+          margin: 20px 0;
+          text-align: right;
+        }
+
+        .totals-table {
+          width: 100%;
+          margin-bottom: 10px;
+        }
+
+        .totals-row {
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 0;
+          font-size: 11px;
+          align-items: center;
+        }
+
+        .totals-label {
+          font-weight: bold;
+          margin-right: 0;
+          min-width: 200px;
+          text-align: right;
+        }
+
+        .totals-value {
+          text-align: right;
+          min-width: 100px;
+          margin-left: 0;
+        }
+
+        .balance-paid {
+          background: #22c55e;
+          color: white;
+          padding: 2px 6px;
+          margin: 0;
+        }
+
+        .balance-pending {
+          background: #ef4444;
+          color: white;
+          padding: 2px 6px;
+          margin: 0;
+        }
+
+        .balance-general {
+          background: #fef3c7;
+          color: #000;
+          padding: 2px 6px;
+          font-size: 10px;
+          margin: 0;
+        }
+
+        .policies-section {
+          border: 1px solid #333;
+          padding: 15px;
+          margin: 20px 0;
+        }
+
+        .policies-title {
+          font-weight: bold;
+          text-align: center;
+          margin-bottom: 10px;
+        }
+
+        .policy-text {
+          font-size: 10px;
+          margin-bottom: 8px;
+          text-align: center;
+        }
+
+        .warning-text {
+          color: #f44336;
+          font-weight: bold;
+          font-size: 10px;
+          text-align: center;
+          margin-top: 10px;
+        }
+
+        .passengers-section {
+          border: 1px solid #333;
+          padding: 15px;
+          margin: 20px 0;
+          min-height: 60px;
+        }
+
+        .passengers-title {
+          font-weight: bold;
+          text-align: center;
+          margin-bottom: 10px;
+        }
+
+        .passenger-line {
+          margin-bottom: 5px;
+          font-size: 11px;
+        }
+
+        .footer-section {
+          text-align: center;
+          margin-top: 30px;
+        }
+
+        .thank-you {
+          font-weight: bold;
+          font-size: 12px;
+          margin-bottom: 20px;
+        }
+
+        .attended-by {
+          font-size: 11px;
+          margin-bottom: 5px;
+        }
+
+        .attended-name {
+          font-weight: bold;
+        }
+
+        /* Page 3 - Banking Information with Background Image */
+        .banking-page-2 {
+          background: url('/banking-card-background.png') no-repeat center center;
+          background-size: cover;
+          position: relative;
+        }
+
+        .banking-title {
+          font-size: 24px;
+          font-weight: bold;
+          color: #333;
+          margin-bottom: 30px;
+        }
+
+        .bank-section {
+          margin-bottom: 25px;
+        }
+
+        .bank-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 15px;
+        }
+
+        .bank-info {
+          flex: 1;
+          text-align: center;
+        }
+
+        .bank-logo {
+          font-size: 18px;
+          font-weight: bold;
+          margin-bottom: 5px;
+        }
+
+        .bhd-logo {
+          color: #4CAF50;
+        }
+
+        .popular-logo {
+          color: #1976D2;
+        }
+
+        .banreservas-logo {
+          color: #2196F3;
+        }
+
+        .account-type {
+          font-size: 16px;
+          font-weight: bold;
+          color: #4CAF50;
+          margin-bottom: 3px;
+        }
+
+        .account-number {
+          font-size: 18px;
+          font-weight: bold;
+          color: #333;
+        }
+
+        .company-info {
+          margin-top: 30px;
+          border-top: 2px solid #333;
+          padding-top: 20px;
+        }
+
+        .company-name {
+          font-size: 16px;
+          font-weight: bold;
+          color: #333;
+          margin-bottom: 5px;
+        }
+
+        .company-details {
+          font-size: 14px;
+          color: #666;
+          margin-bottom: 3px;
+        }
+
+        .ellibry-logo {
+          position: absolute;
+          top: 30px;
+          right: 30px;
+          width: 120px;
+          height: 80px;
+          background: url('/images/ellibry-logo.png') no-repeat center;
+          background-size: contain;
+        }
+
+        .banking-card-2 {
+          background: transparent;
+          border-radius: 20px;
+          padding: 40px;
+          margin: 40px auto;
+          text-align: center;
+          max-width: 500px;
+          margin-top: 100px;
+        }
+
+        .office-visit {
+          text-align: center;
+          margin-top: 50px;
+          padding: 0 40px;
+        }
+
+        .office-title {
+          font-weight: bold;
+          font-size: 14px;
+          margin-bottom: 15px;
+        }
+
+        .office-address {
+          font-size: 12px;
+          color: #333;
+          line-height: 1.6;
+        }
+
+        .contact-footer {
+          position: absolute;
+          bottom: 30px;
+          left: 0;
+          right: 0;
+          text-align: center;
+          font-size: 10px;
+          color: #333;
+        }
+
+        .contact-logo {
+          width: 40px;
+          height: 40px;
+          background: url('/images/ellibry-logo.png') no-repeat center;
+          background-size: contain;
+          display: inline-block;
+          vertical-align: middle;
+          margin-right: 10px;
+        }
+
+        @media print {
+          body { background: white !important; }
+          .page { box-shadow: none !important; }
+        }
+      </style>
+    </head>
+    <body>
+      <!-- Page 2: Confirmación Content -->
+      <div class="page proforma-page">
+        <div class="page-number">Page 1 of 2</div>
+        <div class="confirmation-badge">CONFIRMACIÓN DE SERVICIOS</div>
+        <div class="header-logo"></div>
+
+        <div class="content-section">
+          <div class="info-row">
+            <div class="client-info">
+              <div class="section-title">Información de cliente</div>
+              <div class="info-line">
+                <span class="info-label">ID CLIENTE:</span> ${data.idCliente}
+              </div>
+              <div class="info-line">
+                <span class="info-label">NOMBRE:</span> ${data.nombre}
+              </div>
+              <div class="info-line">
+                <span class="info-label">CÉDULA/RNC:</span> ${data.cedulaRnc}
+              </div>
+              <div class="info-line">
+                <span class="info-label">EMAIL:</span> ${data.email}
+              </div>
+              <div class="info-line">
+                <span class="info-label">WHATAPP:</span> ${data.whatsapp}
+              </div>
+            </div>
+
+            <div class="reservation-info">
+              <div class="section-title">Información de la reserva</div>
+              <div class="info-line">
+                <span class="info-label">SERVICIO:</span> ${data.servicio}
+              </div>
+              <div class="info-line">
+                <span class="info-label">CHECK IN:</span> ${fmtFecha(data.checkIn)}
+              </div>
+              <div class="info-line">
+                <span class="info-label">CHECK OUT:</span> ${fmtFecha(data.checkOut)}
+              </div>
+              <div class="info-line">
+                <span class="info-label">HORA ENTRADA:</span> ${fmtHora(data.horaEntrada)}
+              </div>
+              <div class="info-line">
+                <span class="info-label">HORA SALIDA:</span> ${fmtHora(data.horaSalida)}
+              </div>
+              <div class="info-line">
+                <span class="info-label">FECHA RESERVA:</span> ${fmtFecha(data.fechaReserva)}
+              </div>
+              <div class="info-line">
+                <span class="info-label">ID RESERVA:</span> ${data.idReserva}
+              </div>
+              <div class="info-line">
+                <span class="info-label">FACTURA #:</span> ${data.facturaNumero}
+              </div>
+              <div class="info-line">
+                <span class="info-label">PASAJEROS:</span> ${data.pasajerosCount}
+              </div>
+              <div class="info-line">
+                <span class="info-label">HABITACIONES:</span> ${data.habitacionesCount}
+              </div>
+            </div>
+          </div>
+
+          <div class="observations">
+            <div class="observations-title">Observaciones:</div>
+            <div class="observations-content">${data.observaciones}</div>
+          </div>
+
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th>DETALLE</th>
+                <th>PRECIO</th>
+                <th>DESC</th>
+                <th>TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.lineas.map(
+                (linea) => html`
+                <tr>
+                  <td>
+                    ${linea.descripcion.toUpperCase()}<br>
+                    <small>TITULAR: ${data.nombre.toUpperCase()}</small>
+                  </td>
+                  <td>${fmtMonto(linea.precioUnitario)}</td>
+                  <td>${fmtMonto(linea.descuento)}</td>
+                  <td>${fmtMonto(linea.total)}</td>
+                </tr>
+              `,
+              )}
+            </tbody>
+          </table>
+
+          <div class="totals-section">
+            <div class="totals-row">
+              <span class="totals-label">SUB_TOTAL:</span><span class="totals-value">${fmtMonto(data.subTotal)}</span>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label">DESC_TOTAL:</span><span class="totals-value">${fmtMonto(data.descTotal)}</span>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label">TOTAL:</span><span class="totals-value">${fmtMonto(data.total)}</span>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label balance-paid">MONTO PAGADO:</span><span class="totals-value balance-paid">${fmtMonto(data.montoPagado)}</span>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label balance-pending">BALANCE RESERVA:</span><span class="totals-value balance-pending">${fmtMonto(data.balanceReserva)}</span>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label balance-general">BALANCE GENERAL RD $</span><span class="totals-value balance-general">${fmtMonto(data.balanceGeneralDOP)}</span>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label balance-general">BALANCE GENERAL US $</span><span class="totals-value balance-general">${fmtMonto(data.balanceGeneralUSD)}</span>
+            </div>
+          </div>
+
+          <div class="policies-section">
+            <div class="policies-title">Políticas de cancelación, pagos, penalidades</div>
+            <div class="policy-text">
+              <strong>Fecha límite de pago:</strong><br>
+              (La fecha que se cancela la reserva automáticamente)
+            </div>
+            <div class="policy-text">
+              De no realizarse el pago en esta fecha al día siguiente entra en gastos 100%.
+            </div>
+            <div class="policy-text">
+              Toda reserva que se hayan hecho abonos y se cancelen, se va penalizar con RD $1,000.00 por habitación siempre y cuando la reserva no esté en gastos con el proveedor. Si la reserva entra en gastos es responsabilidad del agente pagar el monto correspondiente.
+            </div>
+            <div class="warning-text">
+              No somos responsables de no realizar pagos a tiempo y la reserva sea cancelada antes que entre en penalidad 100%, de entrar en penalidad la agencia debe cubrir el gasto.
+            </div>
+          </div>
+
+          <div class="passengers-section">
+            <div class="passengers-title">Información de los pasajeros:</div>
+            ${pasajerosOrdenados.map((p, i) => html`<div class="passenger-line">${i + 1}) ${p.nombreCompleto}</div>`)}
+          </div>
+
+          <div class="footer-section">
+            <div class="thank-you">MUCHAS GRACIAS POR CONFIAR EN NUESTROS SERVICIOS.</div>
+            <div class="attended-by">
+              <strong>Atendido por:</strong> <span class="attended-name">${data.atendidoPor}</span>
+            </div>
+            <div class="attended-by">
+              <strong>Referido por:</strong> <span class="attended-name">${data.referidoPor}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page 3: Banking Information with Background Image -->
+      <div class="page banking-page-2">
+        <div class="page-number">Page 2 of 2</div>
+
+        <div class="banking-card-2">
+          <!-- Content is now overlaid on the background image -->
+        </div>
+
+        <div class="office-visit">
+          <div class="office-title">También puede pasar por nuestra oficina, debe avisar antes de ir:</div>
+          <div class="office-address">
+            <strong>Dirección:</strong> Calle Juan Alejandro Ibarra #39, Piso 3, Local 305, Ensanche La Fe, Santo Domingo,<br>
+            Distrito Nacional, Rep. Dom.
+          </div>
+        </div>
+
+        <div class="contact-footer">
+          <div class="contact-logo"></div>
+          <div>
+            <strong>Dirección:</strong> Calle Juan Alejandro Ibarra # 39, 3er Piso, Local 305, Ensanche La Fe, D.N. Sto. Dgo.<br>
+            <strong>Contactos:</strong> 809•992•3548 • 829•633•3548 • 829•769•6781 / <strong>Email:</strong> informacion@aventurasturisticasconellibry.com<br>
+            <strong>RNC:</strong> 132739622 / <strong>Instagram:</strong> @aventurasturisticasconellibry / <strong>Pag. Web:</strong> aventurasturisticasconellibry.com
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `)
 }
 
 export function generateReciboHTML(data: ReciboData): string {

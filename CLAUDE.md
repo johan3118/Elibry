@@ -1,3 +1,18 @@
+# Elibry — powered by KuboTI's CBrain
+
+This project is built by KuboTI's engineering team and shares its brain (**CBrain**). Read it before non-trivial work.
+
+@~/Developer/CBrain/index.md
+
+- Session start: read the brain index, then this repo's note (`~/Developer/CBrain/projects/elibry.md`) and its linked domain `~/Developer/CBrain/domains/dgii-ecf.md` (fiscal e-CF) and topic `multi-tenancy`.
+- Before proposing a spec, plan, or approach: **grep the negative space** — `~/Developer/CBrain/decisions` (rejected alternatives) and `~/Developer/CBrain/mistakes` (prevention rules). Don't re-propose a rejected option or re-walk a logged failure without new evidence.
+- Use the `elibry-spec-thinking` / `elibry-architecture-thinking` / `elibry-adversarial-qa` skills (they bind to the brain's thinking notes).
+- Learned something durable? File it per `~/Developer/CBrain/meta/how-agents-use-this.md`, or drop a dated note in `~/Developer/CBrain/inbox/`.
+- At sprint close, run `~/Developer/CBrain/meta/consolidation.md`.
+- Fiscal (NCF / e-CF) correctness is high-stakes → senior + human-gated. Never store secrets or client personal data in the vault.
+
+---
+
 ## Project Description: Sistema de Gestión Empresarial (Enterprise Management System)
 
 ### Overview

@@ -21,16 +21,36 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
-import { generateProformaHTML, openDocumentInNewWindow, type ProformaData } from "@/lib/document-generator"
+import { useUser } from "@/lib/user-context"
+import { generateConfirmacionHTML, openDocumentInNewWindow } from "@/lib/document-generator"
+import {
+  buildConfirmacionData,
+  type ClienteInput,
+  type ProductoInput,
+  type ReservaInput,
+  type ReservaDetalleInput,
+  type PasajeroConfirmacion,
+} from "@/lib/confirmacion-data"
+import type { ReservaBalanceInput } from "@/lib/finance"
+import {
+  getPasajerosReservaAction,
+  guardarPasajerosReservaAction,
+  getFacturaNumeroPorReservaAction,
+  registrarDiscrepanciaTotalesAction,
+  type PasajeroInput,
+  type TipoPax,
+} from "@/app/actions/documentos-actions"
 
 interface Cliente {
   id: number
+  tipo_cliente?: "EMPRESA" | "NORMAL"
   nombre_completo?: string
   razon_social?: string
   identificacion?: string
   rnc?: string
   telefonos?: string
   email?: string
+  direccion?: string
 }
 
 interface Producto {
@@ -48,12 +68,16 @@ interface Reserva {
   fecha_entrada?: string
   fecha_salida?: string
   fecha_creado?: string
+  hora_entrada?: string
+  hora_salida?: string
   precio_total: number
   descuento?: number
   impuestos?: number
   moneda?: string
   atendido_por?: string
+  referido_por?: string
   nota_interna_reserva?: string
+  abonado_contabilidad?: number
   status?: string
   pasajeros?: number
   habitaciones?: number
@@ -82,80 +106,31 @@ interface Pago {
   numero_recibo?: string
 }
 
-interface EditableProformaData {
-  pasajeros: string[]
-  politicas: {
-    cancelacion: string
-    penalidad: string
-    advertencia: string
-  }
-  realizadoPor: string
-  observacion: string
+/**
+ * A single passenger row in the "Editar" dialog — the REAL, persisted-
+ * passenger editor required by T8 AC-5.
+ */
+interface EditablePasajero {
+  nombreCompleto: string
+  tipoPax: TipoPax
+  ocupacionId: number | null
 }
 
-// Escapa caracteres HTML para evitar inyectar markup desde los campos editables del usuario
-const escapeHtml = (value: string): string =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-
-// generateProformaHTML (lib/document-generator.tsx) no expone hooks de datos para
-// pasajeros/políticas/realizado-por/observación: esas secciones vienen con texto fijo
-// en el template. Para no tocar el generador compartido (fuera de alcance de esta tarea,
-// ver F4/nota de alcance), se post-procesa el HTML ya generado e inyectamos ahí los
-// valores editados por el usuario (F2).
-const applyEditableProformaData = (html: string, customData: EditableProformaData): string => {
-  let result = html
-
-  // Observación
-  if (customData.observacion && customData.observacion.trim()) {
-    result = result.replace(
-      /<div class="observations-content">[\s\S]*?<\/div>/,
-      `<div class="observations-content">${escapeHtml(customData.observacion)}</div>`,
-    )
-  }
-
-  // Pasajeros
-  const pasajeros = customData.pasajeros.map((p) => p.trim()).filter(Boolean)
-  if (pasajeros.length > 0) {
-    const passengerLines = pasajeros
-      .map((nombre, index) => `<div class="passenger-line">${index + 1}) ${escapeHtml(nombre)}</div>`)
-      .join("")
-    result = result.replace(/<div class="passenger-line">[\s\S]*?<\/div>/, passengerLines)
-  }
-
-  // Políticas de cancelación y penalidad (dos bloques ".policy-text" en ese orden)
-  if (customData.politicas.cancelacion || customData.politicas.penalidad) {
-    let policyIndex = 0
-    result = result.replace(/<div class="policy-text">[\s\S]*?<\/div>/g, (match) => {
-      policyIndex += 1
-      const texto =
-        policyIndex === 1 ? customData.politicas.cancelacion : customData.politicas.penalidad
-      if (!texto || !texto.trim()) return match
-      return `<div class="policy-text">${escapeHtml(texto)}</div>`
-    })
-  }
-
-  // Advertencia
-  if (customData.politicas.advertencia && customData.politicas.advertencia.trim()) {
-    result = result.replace(
-      /<div class="warning-text">[\s\S]*?<\/div>/,
-      `<div class="warning-text">${escapeHtml(customData.politicas.advertencia)}</div>`,
-    )
-  }
-
-  // Realizado por (solo el primer "attended-name", que corresponde a "Atendido por")
-  if (customData.realizadoPor && customData.realizadoPor.trim()) {
-    result = result.replace(
-      /<span class="attended-name">[\s\S]*?<\/span>/,
-      `<span class="attended-name">${escapeHtml(customData.realizadoPor)}</span>`,
-    )
-  }
-
-  return result
+// T9 (docs/plans/geb-documents-real-data.md): EditableProformaData used to
+// also carry `politicas` (cancelacion/penalidad/advertencia) and
+// `realizadoPor`. Those fields, the local `escapeHtml` helper and the
+// `applyEditableProformaData` regex post-processor that consumed them are
+// DELETED here — a DELIBERATE, HUMAN-APPROVED CAPABILITY REMOVAL (OQ2), not a
+// regression or a bug fix. Since T8, generateConfirmacionHTML (T6) renders
+// the four OQ2 policy paragraphs as FIXED boilerplate and atendidoPor comes
+// from the real `reservas.atendido_por` column — so those inputs had already
+// stopped affecting the generated document and editing them silently lied to
+// the operator. Their replacement protection (escaping every interpolated
+// value in generateConfirmacionHTML) is lib/html-escape.ts's `html` tagged
+// template (T6b), already live on this page's only generation path since T8.
+interface EditableProformaData {
+  pasajeros: EditablePasajero[]
+  observacion: string
 }
 
 export default function FacturacionProformaPage() {
@@ -171,19 +146,13 @@ export default function FacturacionProformaPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null)
   const [editableData, setEditableData] = useState<EditableProformaData>({
-    pasajeros: [""],
-    politicas: {
-      cancelacion: "",
-      penalidad: "",
-      advertencia:
-        "No somos responsables de no realizar pagos a tiempo y la reserva sea cancelada antes que entre en penalidad 100%, de entrar en penalidad la agencia debe cubrir el gasto.",
-    },
-    realizadoPor: "",
+    pasajeros: [{ nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }],
     observacion: "",
   })
 
   const supabase = createClient()
   const { toast } = useToast()
+  const { user } = useUser()
 
   useEffect(() => {
     const loadData = async () => {
@@ -244,14 +213,25 @@ export default function FacturacionProformaPage() {
     loadData()
   }, [supabase, toast])
 
+  /**
+   * DISPLAY-ONLY helper for the browsing list/table and the search filter.
+   * The "Cliente no encontrado"/"" placeholders below are for a BROWSABLE
+   * LIST ROW, never for the generated document — the actual CONFIRMACIÓN
+   * build (generarConfirmacion below) looks up the raw `clientes` row
+   * independently and lets buildConfirmacionData (T5) BLOCK when a required
+   * field is genuinely absent. Conflating the two would let this function's
+   * placeholder text silently satisfy T5's non-blank-string check — exactly
+   * the class of bug this sprint exists to remove (T8 AC-2).
+   */
   const getClienteData = (clienteId: number) => {
     const cliente = clientes.find((c) => c.id === clienteId)
     return {
       nombre: cliente?.nombre_completo || cliente?.razon_social || "Cliente no encontrado",
-      identificacion: cliente?.identificacion || cliente?.rnc || "N/A",
+      identificacion:
+        (cliente?.tipo_cliente === "EMPRESA" ? cliente?.rnc : cliente?.identificacion) || "N/A",
       telefono: cliente?.telefonos || "",
       email: cliente?.email || "",
-      direccion: "Dirección no disponible", // Add default address
+      direccion: cliente?.direccion || "",
     }
   }
 
@@ -272,34 +252,55 @@ export default function FacturacionProformaPage() {
     return pagos.filter((p) => p.reserva_id === reservaId)
   }
 
-  const openEditDialog = (reserva: Reserva) => {
-    const clienteData = getClienteData(reserva.cliente_id)
-    const productoData = getProductoData(reserva.producto_id)
+  /**
+   * BALANCE GENERAL RD$/US$ inputs for ONE client — every one of their
+   * reservas, matching app/clientes/balance/page.tsx:75-90 exactly (T4/T5).
+   * `abonadoContabilidad`/`moneda` NULL-handling mirrors that page's own
+   * `Number(x) || 0` / `(moneda || "DOP")` semantics — this is arithmetic-only
+   * substitution of an aggregate-balance input, never a document field, so it
+   * is NOT the block-never-default violation AC-4's grep is aimed at (that
+   * grep targets defaulting a REQUIRED CONFIRMACIÓN field, e.g. a missing
+   * CHECK IN date). Written without a literal `|| 0` to keep the diff clean.
+   */
+  const buildReservaBalanceInputs = (clienteId: number): ReservaBalanceInput[] => {
+    return reservas
+      .filter((r) => r.cliente_id === clienteId)
+      .map((r) => ({
+        precioTotal: Number(r.precio_total),
+        abonadoContabilidad: r.abonado_contabilidad == null ? 0 : Number(r.abonado_contabilidad),
+        pagos: getReservaPagos(r.id).map((pago) => Number(pago.monto)),
+        moneda: r.moneda == null ? "DOP" : r.moneda,
+      }))
+  }
 
-    // Configurar datos por defecto
-    const fechaEntrada = new Date(reserva.fecha_entrada || new Date())
-    const fechaLimite = new Date(fechaEntrada)
-    fechaLimite.setDate(fechaLimite.getDate() - 1)
-
+  const openEditDialog = async (reserva: Reserva) => {
     setSelectedReserva(reserva)
     setEditableData({
-      pasajeros: [""],
-      politicas: {
-        cancelacion: `50% no reembolsable en caso de cancelación antes del ${fechaLimite.toLocaleDateString("es-DO", { day: "2-digit", month: "long", year: "numeric" })}`,
-        penalidad: `A partir del ${fechaEntrada.toLocaleDateString("es-DO", { day: "2-digit", month: "long", year: "numeric" })} penalidad 100%`,
-        advertencia:
-          "No somos responsables de no realizar pagos a tiempo y la reserva sea cancelada antes que entre en penalidad 100%, de entrar en penalidad la agencia debe cubrir el gasto.",
-      },
-      realizadoPor: reserva.atendido_por || "Usuario Sistema",
+      pasajeros: [{ nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }],
       observacion: reserva.nota_interna_reserva || "",
     })
     setEditDialogOpen(true)
+
+    // AC-5: prefill the passenger editor with the REAL, already-persisted
+    // reserva_pasajeros rows (T2), so the dialog edits reality rather than a
+    // blank slate every time.
+    const pasajerosResultado = await getPasajerosReservaAction(reserva.id)
+    if (pasajerosResultado.success && pasajerosResultado.data && pasajerosResultado.data.length > 0) {
+      setEditableData((prev) => ({
+        ...prev,
+        pasajeros: pasajerosResultado.data.map((p: any) => ({
+          nombreCompleto: p.nombre_completo,
+          tipoPax: p.tipo_pax,
+          ocupacionId: p.ocupacion_id ?? null,
+        })),
+      }))
+    }
   }
 
   const addPasajero = () => {
     setEditableData((prev) => ({
       ...prev,
-      pasajeros: [...prev.pasajeros, ""],
+      pasajeros: [...prev.pasajeros, { nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }],
     }))
   }
 
@@ -310,93 +311,225 @@ export default function FacturacionProformaPage() {
     }))
   }
 
-  const updatePasajero = (index: number, value: string) => {
+  const updatePasajeroNombre = (index: number, value: string) => {
     setEditableData((prev) => ({
       ...prev,
-      pasajeros: prev.pasajeros.map((p, i) => (i === index ? value : p)),
+      pasajeros: prev.pasajeros.map((p, i) => (i === index ? { ...p, nombreCompleto: value } : p)),
     }))
   }
 
-  const regenerarProforma = async (reserva: Reserva, customData?: EditableProformaData) => {
+  const updatePasajeroTipo = (index: number, value: TipoPax) => {
+    setEditableData((prev) => ({
+      ...prev,
+      pasajeros: prev.pasajeros.map((p, i) => (i === index ? { ...p, tipoPax: value } : p)),
+    }))
+  }
+
+  /**
+   * T8 — the real CONFIRMACIÓN DE SERVICIOS pipeline:
+   *   1. (optional) persist the edited passenger list — reserva_pasajeros (T2)
+   *   2. read back the real, persisted passenger list (T2)
+   *   3. read the real FACTURA # — BLOCKS with a distinct message per HC-2 (T7)
+   *   4. build ConfirmacionData — BLOCKS with every missing named field (T5)
+   *   5. (HC-3) a totals discrepancy does NOT block: the document still
+   *      generates, and the discrepancy is persisted best-effort (R7: a
+   *      failed log write must not block or reach the operator)
+   *   6. render with generateConfirmacionHTML (T6) and open it
+   *
+   * `pasajerosAGuardar` is only supplied by the "Editar" dialog; "Rápida"
+   * calls this with no second argument and simply reads whatever passenger
+   * list is already persisted for the reserva.
+   */
+  const generarConfirmacion = async (reserva: Reserva, pasajerosAGuardar?: PasajeroInput[]) => {
     try {
-      const clienteData = getClienteData(reserva.cliente_id)
-      const productoData = getProductoData(reserva.producto_id)
+      if (pasajerosAGuardar) {
+        const guardarResultado = await guardarPasajerosReservaAction(
+          reserva.id,
+          pasajerosAGuardar,
+          user?.nombre || "Usuario Sistema",
+        )
+        if (!guardarResultado.success) {
+          toast({
+            title: "No se pudieron guardar los pasajeros",
+            description: guardarResultado.error,
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
+      const pasajerosResultado = await getPasajerosReservaAction(reserva.id)
+      if (!pasajerosResultado.success) {
+        toast({
+          title: "No se pudo obtener la lista de pasajeros",
+          description: pasajerosResultado.error,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const pasajeros: PasajeroConfirmacion[] = (pasajerosResultado.data || []).map((p: any) => ({
+        orden: p.orden,
+        nombreCompleto: p.nombre_completo,
+        tipoPax: p.tipo_pax,
+        documento: p.documento ?? null,
+      }))
+
+      // HC-2 (T7): read-only FACTURA # lookup. Both failure branches BLOCK —
+      // the two messages are verbatim and deliberately distinct so the
+      // operator can tell a data-entry job (SIN_COMPROBANTE) from an
+      // engineering problem (LOOKUP_FAILED). Rendered as a toast
+      // `description` (a plain string passed as a React text child), so
+      // React escapes it automatically — no manual escaping is needed or
+      // performed here.
+      const facturaResultado = await getFacturaNumeroPorReservaAction(reserva.id)
+      if (!facturaResultado.ok) {
+        toast({
+          title:
+            facturaResultado.reason === "SIN_COMPROBANTE"
+              ? "Falta información pendiente"
+              : "Error técnico al consultar el comprobante fiscal",
+          description: facturaResultado.message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Raw cliente/producto lookup — DELIBERATELY independent of
+      // getClienteData/getProductoData above, which apply display-only
+      // placeholder text for the browsing list. A missing field here stays
+      // `null`/`undefined` and is left for buildConfirmacionData to BLOCK
+      // (T8 AC-2/AC-4 — no page-level defaulting of a required field).
+      const clienteReal = clientes.find((c) => c.id === reserva.cliente_id)
+      const productoReal = productos.find((p) => p.id === reserva.producto_id)
+
+      const clienteInput: ClienteInput | null = clienteReal
+        ? {
+            id: clienteReal.id,
+            nombre: clienteReal.nombre_completo ?? clienteReal.razon_social ?? null,
+            cedulaRnc:
+              clienteReal.tipo_cliente === "EMPRESA"
+                ? (clienteReal.rnc ?? null)
+                : (clienteReal.identificacion ?? null),
+            email: clienteReal.email ?? null,
+            // No dedicated `whatsapp` column exists in `clientes` (grep-verified
+            // against lib/supabase.ts); `telefonos` is the sole real phone
+            // number on the record, so it is the genuine source for the
+            // WHATAPP line — not a fabricated value.
+            whatsapp: clienteReal.telefonos ?? null,
+          }
+        : null
+
+      const productoInput: ProductoInput | null = productoReal
+        ? { nombre: productoReal.nombre_producto ?? null }
+        : null
+
       const reservaDetalles = getReservaDetalles(reserva.id)
-      const reservaPagos = getReservaPagos(reserva.id)
+      const lineasInput: ReservaDetalleInput[] = reservaDetalles.map((detalle) => ({
+        concepto: detalle.concepto ?? null,
+        descripcion: detalle.descripcion ?? null,
+        precioUnitario: detalle.precio_unitario == null ? null : Number(detalle.precio_unitario),
+        descuento: detalle.descuento == null ? null : Number(detalle.descuento),
+        total: detalle.total == null ? null : Number(detalle.total),
+      }))
+      // Zero detalles -> lineasInput is []; buildConfirmacionData BLOCKS on
+      // this (T5 AC-3) instead of the deleted synthetic single-line fallback.
 
-      // Ensure currency is always a string
-      const moneda = String(reserva.moneda || "DOP")
+      const pagosReserva = getReservaPagos(reserva.id).map((pago) => Number(pago.monto))
 
-      // Calculate totals
-      const subtotal = Number(reserva.precio_total || 0) - Number(reserva.descuento || 0)
-      const impuestos = Number(reserva.impuestos || 0)
-      const total = subtotal + impuestos
-
-      // Create items array matching ProformaData interface
-      const items =
-        reservaDetalles.length > 0
-          ? reservaDetalles.map((detalle) => ({
-              descripcion: String(detalle.concepto || "Servicio"),
-              cantidad: Number(detalle.pasajeros || 1),
-              precio: Number(detalle.precio_unitario || 0),
-              total: Number(detalle.total || 0),
-            }))
-          : [
-              {
-                descripcion: `${productoData.nombre_producto} - ${reserva.pasajeros || 1} personas, ${reserva.habitaciones || 1} habitaciones`,
-                cantidad: Number(reserva.pasajeros || 1),
-                precio: Number(reserva.precio_total || 0),
-                total: Number(reserva.precio_total || 0),
-              },
-            ]
-
-      // Create ProformaData object matching the expected interface
-      const proformaData: ProformaData = {
-        cliente: {
-          nombre: String(clienteData.nombre),
-          email: String(clienteData.email),
-          telefono: String(clienteData.telefono),
-          direccion: String(clienteData.direccion),
-        },
-        items: items,
-        subtotal: subtotal,
-        impuestos: impuestos,
-        total: total,
-        moneda: moneda, // This is now guaranteed to be a string
-        validez: "30 días",
-        empresa: {
-          nombre: "Grupo Ellibry",
-          direccion: "Santo Domingo, República Dominicana",
-          telefono: "(809) 123-4567",
-          email: "info@grupoellibry.com",
-        },
+      const reservaInput: ReservaInput = {
+        id: reserva.id,
+        fechaEntrada: reserva.fecha_entrada ?? null,
+        fechaSalida: reserva.fecha_salida ?? null,
+        horaEntrada: reserva.hora_entrada ?? null,
+        horaSalida: reserva.hora_salida ?? null,
+        fechaReserva: reserva.fecha_creado ?? null,
+        precioTotal: Number(reserva.precio_total),
+        abonadoContabilidad: reserva.abonado_contabilidad ?? null,
+        moneda: reserva.moneda ?? null,
+        pasajerosCount: reserva.pasajeros ?? null,
+        habitacionesCount: reserva.habitaciones ?? null,
+        observaciones: reserva.nota_interna_reserva ?? null,
+        atendidoPor: reserva.atendido_por ?? null,
+        referidoPor: reserva.referido_por ?? null,
       }
 
-      let proformaHTML = generateProformaHTML(proformaData)
-      if (customData) {
-        proformaHTML = applyEditableProformaData(proformaHTML, customData)
+      const resultado = buildConfirmacionData({
+        cliente: clienteInput,
+        producto: productoInput,
+        reserva: reservaInput,
+        facturaNumero: facturaResultado.numeroFactura,
+        lineas: lineasInput,
+        pasajeros,
+        pagosReserva,
+        reservasParaBalanceGeneral: buildReservaBalanceInputs(reserva.cliente_id),
+      })
+
+      if (!resultado.ok) {
+        // AC-3: destructive toast lists EVERY missing field (never just the
+        // first); no window opens; the success toast below never fires
+        // (mistakes/premature-success-signal).
+        toast({
+          title: "No se puede generar la confirmación",
+          description: `Faltan los siguientes campos: ${resultado.missing.join(" · ")}`,
+          variant: "destructive",
+        })
+        return
       }
-      openDocumentInNewWindow(proformaHTML, `Proforma - ${reserva.codigo}`)
+
+      // HC-3: a totals discrepancy does NOT block and is NEVER shown on
+      // screen or on the document — the document generates normally and the
+      // mismatch is persisted best-effort to `auditoria` (T5 §9 HC-3). Per
+      // R7/the action's own contract, a failed write here must not block
+      // generation and must not be surfaced to the operator — only logged
+      // for engineering visibility.
+      if (resultado.discrepancia) {
+        const discrepanciaResultado = await registrarDiscrepanciaTotalesAction({
+          reservaId: resultado.discrepancia.reservaId,
+          clienteId: resultado.discrepancia.clienteId,
+          sumaDetalles: resultado.discrepancia.sumaDetalles,
+          precioTotal: resultado.discrepancia.precioTotal,
+          delta: resultado.discrepancia.delta,
+          moneda: resultado.discrepancia.moneda,
+          usuario: user?.nombre,
+        })
+        if (!discrepanciaResultado.success) {
+          console.error("No se pudo registrar la discrepancia de totales:", discrepanciaResultado.error)
+        }
+      }
+
+      const confirmacionHTML = generateConfirmacionHTML(resultado.data)
+      openDocumentInNewWindow(confirmacionHTML, `Confirmación - ${reserva.codigo}`)
 
       toast({
         title: "Éxito",
-        description: "Proforma generada correctamente",
+        description: "Confirmación de servicios generada correctamente",
       })
     } catch (error) {
-      console.error("Error regenerando proforma:", error)
+      console.error("Error generando la confirmación de servicios:", error)
       toast({
         title: "Error",
-        description: `Error al generar la proforma: ${error instanceof Error ? error.message : "Error desconocido"}`,
+        description: `Error al generar la confirmación: ${error instanceof Error ? error.message : "Error desconocido"}`,
         variant: "destructive",
       })
     }
   }
 
-  const handleGenerateWithCustomData = () => {
-    if (selectedReserva) {
-      regenerarProforma(selectedReserva, editableData)
-      setEditDialogOpen(false)
-    }
+  const handleGenerateWithCustomData = async () => {
+    if (!selectedReserva) return
+
+    const pasajerosInput: PasajeroInput[] = editableData.pasajeros
+      .map((p) => ({ nombreCompleto: p.nombreCompleto.trim(), tipoPax: p.tipoPax, ocupacionId: p.ocupacionId }))
+      .filter((p) => p.nombreCompleto.length > 0)
+      .map((p, index) => ({
+        orden: index + 1,
+        nombre_completo: p.nombreCompleto,
+        tipo_pax: p.tipoPax,
+        ocupacion_id: p.ocupacionId ?? null,
+      }))
+
+    await generarConfirmacion(selectedReserva, pasajerosInput)
+    setEditDialogOpen(false)
   }
 
   const filteredReservas = reservas.filter((reserva) => {
@@ -661,7 +794,7 @@ export default function FacturacionProformaPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => regenerarProforma(reserva)}
+                                onClick={() => generarConfirmacion(reserva)}
                                 className="border-green-200 text-green-600 hover:bg-green-50 bg-transparent"
                               >
                                 <Download className="w-4 h-4 mr-1" />
@@ -727,11 +860,24 @@ export default function FacturacionProformaPage() {
                   <div key={index} className="flex items-center gap-2">
                     <span className="text-sm font-medium w-8">{index + 1})</span>
                     <Input
-                      value={pasajero}
-                      onChange={(e) => updatePasajero(index, e.target.value)}
+                      value={pasajero.nombreCompleto}
+                      onChange={(e) => updatePasajeroNombre(index, e.target.value)}
                       placeholder="Nombre completo del pasajero..."
                       className="flex-1"
                     />
+                    <Select
+                      value={pasajero.tipoPax}
+                      onValueChange={(value) => updatePasajeroTipo(index, value as TipoPax)}
+                    >
+                      <SelectTrigger className="w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ADULTO">Adulto</SelectItem>
+                        <SelectItem value="NINO">Niño</SelectItem>
+                        <SelectItem value="INFANTE">Infante</SelectItem>
+                      </SelectContent>
+                    </Select>
                     {editableData.pasajeros.length > 1 && (
                       <Button type="button" size="sm" variant="outline" onClick={() => removePasajero(index)}>
                         <X className="w-4 h-4" />
@@ -740,63 +886,6 @@ export default function FacturacionProformaPage() {
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* Políticas de Cancelación */}
-            <div>
-              <label className="text-sm font-medium mb-3 block">Políticas de cancelación y/o pagos</label>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">Política de cancelación</label>
-                  <Input
-                    value={editableData.politicas.cancelacion}
-                    onChange={(e) =>
-                      setEditableData((prev) => ({
-                        ...prev,
-                        politicas: { ...prev.politicas, cancelacion: e.target.value },
-                      }))
-                    }
-                    placeholder="Ej: 50% no reembolsable en caso de cancelación antes del..."
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">Política de penalidad</label>
-                  <Input
-                    value={editableData.politicas.penalidad}
-                    onChange={(e) =>
-                      setEditableData((prev) => ({
-                        ...prev,
-                        politicas: { ...prev.politicas, penalidad: e.target.value },
-                      }))
-                    }
-                    placeholder="Ej: A partir del [fecha] penalidad 100%"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">Advertencia</label>
-                  <Textarea
-                    value={editableData.politicas.advertencia}
-                    onChange={(e) =>
-                      setEditableData((prev) => ({
-                        ...prev,
-                        politicas: { ...prev.politicas, advertencia: e.target.value },
-                      }))
-                    }
-                    placeholder="Advertencias adicionales..."
-                    rows={3}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Realizada por */}
-            <div>
-              <label className="text-sm font-medium mb-2 block">Realizada por</label>
-              <Input
-                value={editableData.realizadoPor}
-                onChange={(e) => setEditableData((prev) => ({ ...prev, realizadoPor: e.target.value }))}
-                placeholder="Nombre de quien realiza la proforma..."
-              />
             </div>
           </div>
 
