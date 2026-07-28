@@ -11,85 +11,194 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
-import {
-  Receipt,
-  ArrowLeft,
-  Printer,
-  Search,
-  Calendar,
-  MapPin,
-  Users,
-  Plane,
-  PlusIcon,
-  MinusIcon,
-  X,
-  Download,
-} from "lucide-react"
+import { Receipt, ArrowLeft, Printer, Search, Calendar, MapPin, Users, Plane, PlusIcon, X, Download } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
-import { generateVoucherHTML } from "@/lib/document-generator"
+import { generateVoucherDocHTML, openDocumentInNewWindow } from "@/lib/document-generator"
+import {
+  buildVoucherData,
+  type BuildVoucherDataInput,
+  type OcupacionVoucherInput,
+  type PasajeroVoucherInput,
+  type VoucherDocData,
+} from "@/lib/voucher-data"
+import { useToast } from "@/hooks/use-toast"
+import { useUser } from "@/lib/user-context"
+import {
+  getPasajerosReservaAction,
+  guardarPasajerosReservaAction,
+  getOcupacionesReservaAction,
+  guardarOcupacionesReservaAction,
+  getDatosVoucherReservaAction,
+  guardarDatosVoucherReservaAction,
+  type PasajeroInput,
+  type OcupacionInput,
+  type TipoPax,
+  type DatosVoucherReserva,
+} from "@/app/actions/documentos-actions"
+
+/**
+ * T15 (docs/plans/geb-documents-real-data.md) — this page now wires the
+ * VOUCHER to real, persisted data end to end:
+ *   - `localizador`/`regimen`/`pax_adultos`/`pax_ninos`/`pax_infantes` load
+ *     from and save to `reservas` (T11's columns) exclusively through T12's
+ *     getDatosVoucherReservaAction/guardarDatosVoucherReservaAction.
+ *   - Named passengers load/save through T2's getPasajerosReservaAction /
+ *     guardarPasajerosReservaAction — the SAME reserva_pasajeros rows
+ *     CONFIRMACIÓN uses (OQ1).
+ *   - Room-occupancy groups load/save through T2/T2b's
+ *     getOcupacionesReservaAction / guardarOcupacionesReservaAction, whose
+ *     success path also rebuilds passenger->room links (HC-4) — this page
+ *     surfaces that outcome, never swallowing a `relinked: false`.
+ *   - `DIRECCIÓN`/`TELÉFONO` come from the HOTEL (`productos.direccion` /
+ *     `suplidores.telefono`), reached via the product's `suplidor_id` — no
+ *     new columns, per the plan's F2/B2 wiring.
+ *
+ * DELETED (fabrications this task removes, per §0/T15 AC-1/AC-3/AC-4/AC-5):
+ *   - `generateVoucherNumber()` — a date+`Math.random()` string regenerated
+ *     on every click, never persisted. The real, persisted, agent-typed
+ *     `localizador` (T11/T12) replaces it.
+ *   - hardcoded `habitacion: "STANDARD"` and `regimen: "TODO INCLUIDO"`.
+ *   - fabricated `"cliente@email.com"` / `"Dirección del cliente"`.
+ *   - `Math.max(noches, 1)` — `noches` is now a read-only value COMPUTED
+ *     from the reserva's real check-in/check-out dates, never clamped or
+ *     defaulted (mirrors `lib/voucher-data.ts`'s own `calcularNoches`).
+ *
+ * BLOCK SEMANTICS (T15 AC-2): this prep screen stays fully usable — every
+ * field editable and every section independently savable — while
+ * `localizador` is absent, because an agent must be able to fill in rooms,
+ * passengers and pax counts BEFORE the hotel replies with a confirmation
+ * code. Only "Generar e Imprimir" and "Descargar como PDF" are disabled
+ * while the PERSISTED localizador is missing, with a visible reason next to
+ * the buttons. `construirVoucherData` below is the single, comprehensive
+ * gate both buttons share (T15 AC-8) — it re-reads every persisted source
+ * fresh and runs `buildVoucherData` (T13), which blocks on ANY missing
+ * required field (not just localizador) and names every one of them at
+ * once, never just the first.
+ *
+ * B3 PROVENANCE (Risk R13, T15 AC-10): the ONLY `VoucherDocData` value this
+ * file ever touches is `resultado.data` returned directly from
+ * `buildVoucherData()` inside `construirVoucherData` — never a hand-written
+ * literal, never a wider `reserva`/`producto` row spread into that slot,
+ * never a cast. The `BuildVoucherDataInput` object built just above that
+ * call is itself a FRESH literal assembled field-by-field from validated
+ * action results and this page's own draft state — never a `...reserva`
+ * spread — so no wider-typed value can ride along into a `VoucherDocData`
+ * slot undetected (TypeScript's excess-property check only fires on fresh
+ * literals, so keeping every source literal, not a spread, is what makes
+ * that guarantee real here).
+ */
+
+interface Cliente {
+  id: number
+  nombre_completo?: string
+  razon_social?: string
+  telefonos?: string
+  email?: string
+}
+
+interface Producto {
+  id: number
+  nombre_producto: string
+  pais?: string
+  direccion?: string
+  suplidor_id?: number
+}
+
+interface Suplidor {
+  id: number
+  telefono?: string
+}
 
 interface Reserva {
   id: number
   codigo: string
   cliente_id: number
   producto_id: number
-  fecha_entrada?: string
-  fecha_salida?: string
+  fecha_entrada?: string | null
+  fecha_salida?: string | null
+  hora_entrada?: string | null
+  hora_salida?: string | null
   pasajeros: number
   precio_total: number
   status: string
-  cliente?: {
-    nombre_completo?: string
-    razon_social?: string
-    telefonos?: string
-    email?: string
-  }
-  producto?: {
-    nombre_producto: string
-    pais?: string
-  }
+  nota_interna_reserva?: string | null
 }
 
-interface VoucherData {
-  titular: string
-  localizador: string
-  fechaViaje: string
-  destino: string
-  hotel: string
-  habitacion: string
-  regimen: string
-  fechaEntrada: string
-  fechaSalida: string
-  noches: number
-  adultos: number
-  ninos: number
-  observaciones: string
-  pasajeros: string[]
+/** One row in the repeatable occupancy-group editor — persists to `reserva_ocupaciones` (T2/T2b). */
+interface EditableOcupacion {
+  cantidad: number | null
+  ocupacion: string
+  categoria: string
 }
+
+/** One row in the named-passenger editor — persists to `reserva_pasajeros` (T2), same table CONFIRMACIÓN uses. */
+interface EditablePasajeroVoucher {
+  nombreCompleto: string
+  tipoPax: TipoPax
+  ocupacionId: number | null
+}
+
+/**
+ * Ephemeral, per-document fields with no dedicated persisted column of
+ * their own (mirrors the legacy page's own editable `titular`/`hotel`
+ * overrides) plus the T12-backed fields, kept here as the editable draft
+ * and synced from `datosVoucherPersistidos` after every load/save.
+ */
+interface VoucherDraft {
+  titular: string
+  lugar: string
+  localizador: string
+  regimen: string
+  paxAdultos: number | null
+  paxNinos: number | null
+  paxInfantes: number | null
+  observaciones: string
+}
+
+const REGIMEN_OPCIONES = [
+  { value: "TODO INCLUIDO", label: "Todo Incluido" },
+  { value: "MEDIA PENSION", label: "Media Pensión" },
+  { value: "PENSION COMPLETA", label: "Pensión Completa" },
+  { value: "SOLO ALOJAMIENTO", label: "Solo Alojamiento" },
+  { value: "DESAYUNO", label: "Desayuno" },
+]
 
 export default function VoucherPage() {
   const [reservas, setReservas] = useState<Reserva[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [suplidores, setSuplidores] = useState<Suplidor[]>([])
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null)
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
-  const [customData, setCustomData] = useState<VoucherData>({
+  const [voucherDraft, setVoucherDraft] = useState<VoucherDraft>({
     titular: "",
+    lugar: "",
     localizador: "",
-    fechaViaje: "",
-    destino: "",
-    hotel: "",
-    habitacion: "",
-    regimen: "TODO INCLUIDO",
-    fechaEntrada: "",
-    fechaSalida: "",
-    noches: 0,
-    adultos: 0,
-    ninos: 0,
+    regimen: "",
+    paxAdultos: null,
+    paxNinos: null,
+    paxInfantes: null,
     observaciones: "",
-    pasajeros: [""],
   })
+
+  // The last-known PERSISTED datos-voucher row (T12) — used ONLY to gate the
+  // Generar/Descargar buttons (T15 AC-2), never mutated by keystrokes in
+  // voucherDraft, so an unsaved edit can never look like a persisted
+  // localizador.
+  const [datosVoucherPersistidos, setDatosVoucherPersistidos] = useState<DatosVoucherReserva | null>(null)
+
+  const [ocupacionesEditor, setOcupacionesEditor] = useState<EditableOcupacion[]>([
+    { cantidad: null, ocupacion: "", categoria: "" },
+  ])
+  const [pasajerosEditor, setPasajerosEditor] = useState<EditablePasajeroVoucher[]>([
+    { nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null },
+  ])
+
+  const { toast } = useToast()
+  const { user } = useUser()
 
   useEffect(() => {
     fetchReservas()
@@ -99,7 +208,6 @@ export default function VoucherPage() {
     try {
       setLoading(true)
 
-      // First, get reservas
       const { data: reservasData, error: reservasError } = await supabase
         .from("reservas")
         .select("*")
@@ -111,58 +219,37 @@ export default function VoucherPage() {
         return
       }
 
-      if (!reservasData || reservasData.length === 0) {
-        setReservas([])
-        return
+      setReservas(reservasData || [])
+
+      const { data: clientesData, error: clientesError } = await supabase
+        .from("clientes")
+        .select("id, nombre_completo, razon_social, telefonos, email")
+
+      if (clientesError) {
+        console.error("Error fetching clientes:", clientesError)
+      } else {
+        setClientes(clientesData || [])
       }
 
-      // Get unique cliente and producto IDs
-      const clienteIds = [...new Set(reservasData.map((r) => r.cliente_id).filter(Boolean))]
-      const productoIds = [...new Set(reservasData.map((r) => r.producto_id).filter(Boolean))]
+      const { data: productosData, error: productosError } = await supabase
+        .from("productos")
+        .select("id, nombre_producto, pais, direccion, suplidor_id")
 
-      // Fetch clientes
-      let clientesData: any[] = []
-      if (clienteIds.length > 0) {
-        const { data, error } = await supabase
-          .from("clientes")
-          .select("id, nombre_completo, razon_social, telefonos, email")
-          .in("id", clienteIds)
-
-        if (error) {
-          console.error("Error fetching clientes:", error)
-        } else {
-          clientesData = data || []
-        }
+      if (productosError) {
+        console.error("Error fetching productos:", productosError)
+      } else {
+        setProductos(productosData || [])
       }
 
-      // Fetch productos
-      let productosData: any[] = []
-      if (productoIds.length > 0) {
-        const { data, error } = await supabase
-          .from("productos")
-          .select("id, nombre_producto, pais")
-          .in("id", productoIds)
+      const { data: suplidoresData, error: suplidoresError } = await supabase
+        .from("suplidores")
+        .select("id, telefono")
 
-        if (error) {
-          console.error("Error fetching productos:", error)
-        } else {
-          productosData = data || []
-        }
+      if (suplidoresError) {
+        console.error("Error fetching suplidores:", suplidoresError)
+      } else {
+        setSuplidores(suplidoresData || [])
       }
-
-      // Combine data
-      const reservasWithRelations = reservasData.map((reserva) => {
-        const cliente = clientesData.find((c) => c.id === reserva.cliente_id)
-        const producto = productosData.find((p) => p.id === reserva.producto_id)
-
-        return {
-          ...reserva,
-          cliente: cliente || null,
-          producto: producto || null,
-        }
-      })
-
-      setReservas(reservasWithRelations)
     } catch (error) {
       console.error("Error in fetchReservas:", error)
       setReservas([])
@@ -171,9 +258,31 @@ export default function VoucherPage() {
     }
   }
 
+  /**
+   * DISPLAY-ONLY helpers for the browsable reserva list/search — mirrors
+   * app/facturacion/proforma/page.tsx's getClienteData/getProductoData.
+   * `construirVoucherData` below looks up the raw rows independently and
+   * lets `buildVoucherData` (T13) BLOCK when a field is genuinely absent —
+   * these placeholders never feed the generated document.
+   */
+  const getClienteData = (clienteId: number) => {
+    const cliente = clientes.find((c) => c.id === clienteId)
+    return {
+      nombre: cliente?.nombre_completo || cliente?.razon_social || "Cliente no encontrado",
+    }
+  }
+
+  const getProductoData = (productoId: number) => {
+    const producto = productos.find((p) => p.id === productoId)
+    return {
+      nombre_producto: producto?.nombre_producto || "Producto no encontrado",
+      pais: producto?.pais || "",
+    }
+  }
+
   const filteredReservas = reservas.filter((reserva) => {
-    const clienteNombre = reserva.cliente?.nombre_completo || reserva.cliente?.razon_social || ""
-    const productoNombre = reserva.producto?.nombre_producto || ""
+    const clienteNombre = getClienteData(reserva.cliente_id).nombre
+    const productoNombre = getProductoData(reserva.producto_id).nombre_producto
 
     return (
       reserva.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -182,180 +291,399 @@ export default function VoucherPage() {
     )
   })
 
-  const handleReservaSelect = (reserva: Reserva) => {
+  /** Read-only, derived from the reserva's real check-in/check-out dates — never a `?? 3`/`|| 3` fallback (T15 AC-5). */
+  const calcularNochesDisplay = (reserva: Reserva | null): number | null => {
+    if (!reserva?.fecha_entrada || !reserva?.fecha_salida) return null
+    const entrada = new Date(reserva.fecha_entrada).getTime()
+    const salida = new Date(reserva.fecha_salida).getTime()
+    if (Number.isNaN(entrada) || Number.isNaN(salida) || salida <= entrada) return null
+    return Math.round((salida - entrada) / (1000 * 60 * 60 * 24))
+  }
+
+  const handleReservaSelect = async (reserva: Reserva) => {
     setSelectedReserva(reserva)
 
-    // Auto-llenar datos del voucher
-    const clienteNombre = reserva.cliente?.nombre_completo || reserva.cliente?.razon_social || ""
-    const fechaEntrada = reserva.fecha_entrada || ""
-    const fechaSalida = reserva.fecha_salida || ""
+    const clienteNombre = getClienteData(reserva.cliente_id).nombre
+    const productoNombre = getProductoData(reserva.producto_id).nombre_producto
 
-    // Calcular noches
-    let noches = 0
-    if (fechaEntrada && fechaSalida) {
-      const entrada = new Date(fechaEntrada)
-      const salida = new Date(fechaSalida)
-      noches = Math.ceil((salida.getTime() - entrada.getTime()) / (1000 * 60 * 60 * 24))
-    }
-
-    // Initialize passengers array based on reservation
-    const initialPassengers = [clienteNombre]
-    for (let i = 1; i < (reserva.pasajeros || 1); i++) {
-      initialPassengers.push("Acompañante")
-    }
-
-    setCustomData({
-      titular: clienteNombre,
-      localizador: generateVoucherNumber(),
-      fechaViaje: fechaEntrada,
-      destino: reserva.producto?.pais || "",
-      hotel: reserva.producto?.nombre_producto || "",
-      habitacion: "STANDARD",
-      regimen: "TODO INCLUIDO",
-      fechaEntrada: fechaEntrada,
-      fechaSalida: fechaSalida,
-      noches: Math.max(noches, 1),
-      adultos: reserva.pasajeros || 1,
-      ninos: 0,
-      observaciones: "",
-      pasajeros: initialPassengers,
+    setVoucherDraft({
+      titular: clienteNombre === "Cliente no encontrado" ? "" : clienteNombre,
+      lugar: productoNombre === "Producto no encontrado" ? "" : productoNombre,
+      localizador: "",
+      regimen: "",
+      paxAdultos: null,
+      paxNinos: null,
+      paxInfantes: null,
+      observaciones: reserva.nota_interna_reserva || "",
     })
-  }
+    setDatosVoucherPersistidos(null)
+    setOcupacionesEditor([{ cantidad: null, ocupacion: "", categoria: "" }])
+    setPasajerosEditor([{ nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }])
 
-  const generateVoucherNumber = () => {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, "0")
-    const day = String(now.getDate()).padStart(2, "0")
-    const random = Math.floor(Math.random() * 9999)
-      .toString()
-      .padStart(4, "0")
-    return `${year}${month}${day}${random}`
-  }
+    const [datosResultado, pasajerosResultado, ocupacionesResultado] = await Promise.all([
+      getDatosVoucherReservaAction(reserva.id),
+      getPasajerosReservaAction(reserva.id),
+      getOcupacionesReservaAction(reserva.id),
+    ])
 
-  const handleInputChange = (field: keyof VoucherData, value: string | number | string[]) => {
-    setCustomData((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const addPassenger = () => {
-    setCustomData((prev) => ({
-      ...prev,
-      pasajeros: [...prev.pasajeros, ""],
-    }))
-  }
-
-  const removePassenger = (index: number) => {
-    if (customData.pasajeros.length > 1) {
-      setCustomData((prev) => ({
+    if (datosResultado.success && datosResultado.data) {
+      const datos = datosResultado.data
+      setDatosVoucherPersistidos(datos)
+      setVoucherDraft((prev) => ({
         ...prev,
-        pasajeros: prev.pasajeros.filter((_, i) => i !== index),
+        localizador: datos.localizador ?? "",
+        regimen: datos.regimen ?? "",
+        paxAdultos: datos.pax_adultos,
+        paxNinos: datos.pax_ninos,
+        paxInfantes: datos.pax_infantes,
       }))
+    } else if (!datosResultado.success) {
+      toast({
+        title: "No se pudieron cargar los datos del voucher",
+        description: datosResultado.error,
+        variant: "destructive",
+      })
+    }
+
+    if (pasajerosResultado.success && pasajerosResultado.data && pasajerosResultado.data.length > 0) {
+      setPasajerosEditor(
+        pasajerosResultado.data.map((p: any) => ({
+          nombreCompleto: p.nombre_completo,
+          tipoPax: p.tipo_pax,
+          ocupacionId: p.ocupacion_id ?? null,
+        })),
+      )
+    } else if (!pasajerosResultado.success) {
+      toast({
+        title: "No se pudo cargar la lista de pasajeros",
+        description: pasajerosResultado.error,
+        variant: "destructive",
+      })
+    }
+
+    if (ocupacionesResultado.success && ocupacionesResultado.data && ocupacionesResultado.data.length > 0) {
+      setOcupacionesEditor(
+        ocupacionesResultado.data.map((o: any) => ({
+          cantidad: o.cantidad,
+          ocupacion: o.ocupacion,
+          categoria: o.categoria,
+        })),
+      )
+    } else if (!ocupacionesResultado.success) {
+      toast({
+        title: "No se pudieron cargar los grupos de ocupación",
+        description: ocupacionesResultado.error,
+        variant: "destructive",
+      })
     }
   }
 
-  const updatePassenger = (index: number, value: string) => {
-    setCustomData((prev) => ({
-      ...prev,
-      pasajeros: prev.pasajeros.map((p, i) => (i === index ? value : p)),
-    }))
+  const handleVoucherDraftChange = <K extends keyof VoucherDraft>(field: K, value: VoucherDraft[K]) => {
+    setVoucherDraft((prev) => ({ ...prev, [field]: value }))
   }
 
-  const generateVoucher = () => {
-    if (!selectedReserva) {
-      alert("Por favor selecciona una reserva primero")
+  /** Blank input -> `null` ("not supplied"), never `0` (block-never-default at the input layer, T15 AC-5). */
+  const handlePaxInputChange = (field: "paxAdultos" | "paxNinos" | "paxInfantes", raw: string) => {
+    if (raw.trim() === "") {
+      handleVoucherDraftChange(field, null)
+      return
+    }
+    const parsed = Number.parseInt(raw, 10)
+    handleVoucherDraftChange(field, Number.isNaN(parsed) ? null : parsed)
+  }
+
+  /**
+   * Persists `localizador`/`regimen`/`pax_adultos`/`pax_ninos`/`pax_infantes`
+   * in one call through T12's guardarDatosVoucherReservaAction, then
+   * re-reads the persisted row so `datosVoucherPersistidos` (the
+   * Generar/Descargar gate) reflects reality, never an assumed echo of what
+   * was sent.
+   */
+  const guardarDatosVoucher = async () => {
+    if (!selectedReserva) return
+
+    const resultado = await guardarDatosVoucherReservaAction(selectedReserva.id, {
+      localizador: voucherDraft.localizador,
+      regimen: voucherDraft.regimen,
+      pax_adultos: voucherDraft.paxAdultos,
+      pax_ninos: voucherDraft.paxNinos,
+      pax_infantes: voucherDraft.paxInfantes,
+    })
+
+    if (!resultado.success) {
+      toast({
+        title: "No se pudieron guardar los datos del voucher",
+        description: resultado.error,
+        variant: "destructive",
+      })
       return
     }
 
-    // Prepare voucher data using the interface from document-generator
-    const voucherData = {
-      cliente: {
-        nombre: selectedReserva.cliente?.nombre_completo || selectedReserva.cliente?.razon_social || customData.titular,
-        email: selectedReserva.cliente?.email || "cliente@email.com",
-        telefono: selectedReserva.cliente?.telefonos || "",
-        direccion: customData.destino || "Dirección del cliente",
-      },
-      reserva: {
-        numero: selectedReserva.codigo,
-        fecha: customData.fechaViaje,
-        servicio: customData.hotel || selectedReserva.producto?.nombre_producto || "Servicio turístico",
-        total: selectedReserva.precio_total,
-        moneda: "USD",
-      },
-      empresa: {
-        nombre: "GRUPO ELLIBRY SRL",
-        direccion: "Calle Juan Alejandro Ibarra #39, Piso 3, Local 305, Ensanche La Fe, Santo Domingo, D.N.",
-        telefono: "(809) 992-3548",
-        email: "informacion@aventurasturisticasconellibry.com",
-      },
-      // Pass additional data collected in the "Datos del Voucher" form (F4)
-      localizador: customData.localizador,
-      habitacion: customData.habitacion,
-      regimen: customData.regimen,
-      noches: customData.noches,
-      adultos: customData.adultos,
-      ninos: customData.ninos,
-      fechaEntrada: customData.fechaEntrada,
-      fechaSalida: customData.fechaSalida,
-      destino: customData.destino,
-      pasajeros: customData.pasajeros,
-      observaciones: customData.observaciones,
+    const recargado = await getDatosVoucherReservaAction(selectedReserva.id)
+    if (recargado.success && recargado.data) {
+      const datos = recargado.data
+      setDatosVoucherPersistidos(datos)
+      setVoucherDraft((prev) => ({
+        ...prev,
+        localizador: datos.localizador ?? "",
+        regimen: datos.regimen ?? "",
+        paxAdultos: datos.pax_adultos,
+        paxNinos: datos.pax_ninos,
+        paxInfantes: datos.pax_infantes,
+      }))
     }
 
-    // Generate the voucher HTML using the document generator
-    const voucherHTML = generateVoucherHTML(voucherData)
+    toast({
+      title: "Datos del voucher guardados",
+      description: "Localizador, régimen y ocupación de pasajeros actualizados.",
+    })
+  }
 
-    // Open in new window
-    const newWindow = window.open("", "_blank")
-    if (newWindow) {
-      newWindow.document.write(voucherHTML)
-      newWindow.document.close()
-      newWindow.focus()
+  const addOcupacionGrupo = () => {
+    setOcupacionesEditor((prev) => [...prev, { cantidad: null, ocupacion: "", categoria: "" }])
+  }
+
+  const removeOcupacionGrupo = (index: number) => {
+    setOcupacionesEditor((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateOcupacionGrupo = (index: number, field: keyof EditableOcupacion, value: string | number | null) => {
+    setOcupacionesEditor((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)))
+  }
+
+  /**
+   * Persists the occupancy-group editor to `reserva_ocupaciones`
+   * (T2/T2b). HC-4 surface (T15 AC-7): every `success: true` return also
+   * carries `relinked`/`enlacesDescartados`/`enlacesNoRestablecidos` — this
+   * ALWAYS inspects them and shows a non-blocking warning naming how many
+   * passengers need manual re-assignment. A silent `success: true` here
+   * would be exactly the send-back HC-4 exists to prevent.
+   */
+  const guardarOcupaciones = async () => {
+    if (!selectedReserva) return
+
+    const ocupacionesInput: OcupacionInput[] = ocupacionesEditor
+      .filter((o) => o.ocupacion.trim().length > 0 || o.categoria.trim().length > 0 || (o.cantidad ?? 0) > 0)
+      .map((o, index) => ({
+        orden: index + 1,
+        cantidad: o.cantidad ?? 0,
+        ocupacion: o.ocupacion.trim(),
+        categoria: o.categoria.trim(),
+      }))
+
+    const resultado = await guardarOcupacionesReservaAction(
+      selectedReserva.id,
+      ocupacionesInput,
+      user?.nombre || "Usuario Sistema",
+    )
+
+    if (!resultado.success) {
+      toast({
+        title: "No se pudieron guardar los grupos de ocupación",
+        description: (resultado as any).error,
+        variant: "destructive",
+      })
+      return
     }
+
+    const enlacesDescartados: number[] = (resultado as any).enlacesDescartados ?? []
+    const enlacesNoRestablecidos: number[] = (resultado as any).enlacesNoRestablecidos ?? []
+    const totalAfectados = enlacesDescartados.length + enlacesNoRestablecidos.length
+
+    if (totalAfectados > 0) {
+      toast({
+        title: "Ocupaciones guardadas — revisar pasajeros",
+        description: `${totalAfectados} pasajero(s) quedaron sin habitación asignada tras este cambio y deben reasignarse manualmente.`,
+      })
+    } else {
+      toast({
+        title: "Ocupaciones guardadas",
+        description: "Los grupos de ocupación fueron actualizados.",
+      })
+    }
+
+    const recargado = await getOcupacionesReservaAction(selectedReserva.id)
+    if (recargado.success && recargado.data && recargado.data.length > 0) {
+      setOcupacionesEditor(
+        recargado.data.map((o: any) => ({ cantidad: o.cantidad, ocupacion: o.ocupacion, categoria: o.categoria })),
+      )
+    }
+  }
+
+  const addPasajeroVoucher = () => {
+    setPasajerosEditor((prev) => [...prev, { nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }])
+  }
+
+  const removePasajeroVoucher = (index: number) => {
+    setPasajerosEditor((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updatePasajeroVoucherNombre = (index: number, value: string) => {
+    setPasajerosEditor((prev) => prev.map((p, i) => (i === index ? { ...p, nombreCompleto: value } : p)))
+  }
+
+  const updatePasajeroVoucherTipo = (index: number, value: TipoPax) => {
+    setPasajerosEditor((prev) => prev.map((p, i) => (i === index ? { ...p, tipoPax: value } : p)))
+  }
+
+  /** Persists the named-passenger editor to `reserva_pasajeros` (T2) — the SAME table CONFIRMACIÓN uses (OQ1, T15 AC-6). */
+  const guardarPasajeros = async () => {
+    if (!selectedReserva) return
+
+    const pasajerosInput: PasajeroInput[] = pasajerosEditor
+      .filter((p) => p.nombreCompleto.trim().length > 0)
+      .map((p, index) => ({
+        orden: index + 1,
+        nombre_completo: p.nombreCompleto.trim(),
+        tipo_pax: p.tipoPax,
+        ocupacion_id: p.ocupacionId ?? null,
+      }))
+
+    const resultado = await guardarPasajerosReservaAction(
+      selectedReserva.id,
+      pasajerosInput,
+      user?.nombre || "Usuario Sistema",
+    )
+
+    if (!resultado.success) {
+      toast({
+        title: "No se pudieron guardar los pasajeros",
+        description: resultado.error,
+        variant: "destructive",
+      })
+      return
+    }
+
+    toast({
+      title: "Pasajeros guardados",
+      description: "La lista de pasajeros del voucher fue actualizada.",
+    })
+  }
+
+  /**
+   * The single, comprehensive gate both "Generar e Imprimir" and "Descargar
+   * como PDF" share (T15 AC-8/AC-9/AC-10). Re-reads every persisted source
+   * FRESH — never trusts an unsaved keystroke sitting in local draft state
+   * as if it were real — builds a FRESH `BuildVoucherDataInput` literal, and
+   * passes it straight into `buildVoucherData()`. Returns the resulting
+   * `VoucherDocData` on success, or `null` after toasting every missing
+   * field on a block (never just the first, never a generic message).
+   */
+  const construirVoucherData = async (reserva: Reserva): Promise<VoucherDocData | null> => {
+    const [datosResultado, pasajerosResultado, ocupacionesResultado] = await Promise.all([
+      getDatosVoucherReservaAction(reserva.id),
+      getPasajerosReservaAction(reserva.id),
+      getOcupacionesReservaAction(reserva.id),
+    ])
+
+    if (!datosResultado.success || !datosResultado.data) {
+      toast({
+        title: "No se pudo generar el voucher",
+        description: !datosResultado.success ? datosResultado.error : "No se pudieron leer los datos del voucher",
+        variant: "destructive",
+      })
+      return null
+    }
+    if (!pasajerosResultado.success || !pasajerosResultado.data) {
+      toast({
+        title: "No se pudo generar el voucher",
+        description: !pasajerosResultado.success ? pasajerosResultado.error : "No se pudo leer la lista de pasajeros",
+        variant: "destructive",
+      })
+      return null
+    }
+    if (!ocupacionesResultado.success || !ocupacionesResultado.data) {
+      toast({
+        title: "No se pudo generar el voucher",
+        description: !ocupacionesResultado.success
+          ? ocupacionesResultado.error
+          : "No se pudieron leer los grupos de ocupación",
+        variant: "destructive",
+      })
+      return null
+    }
+
+    const productoReal = productos.find((p) => p.id === reserva.producto_id)
+    const suplidorReal = productoReal?.suplidor_id ? suplidores.find((s) => s.id === productoReal.suplidor_id) : null
+
+    // B3 provenance (Risk R13, T15 AC-10): a FRESH object literal, built
+    // field-by-field from validated action results and this page's own
+    // draft state — never a `...reserva`/`...productoReal` spread, never a
+    // cast. This is the ONLY BuildVoucherDataInput constructed in this file.
+    const input: BuildVoucherDataInput = {
+      titular: voucherDraft.titular,
+      lugar: voucherDraft.lugar,
+      direccionHotel: productoReal?.direccion ?? null,
+      telefonoHotel: suplidorReal?.telefono ?? null,
+      regimen: datosResultado.data.regimen,
+      localizador: datosResultado.data.localizador,
+      paxAdultos: datosResultado.data.pax_adultos,
+      paxNinos: datosResultado.data.pax_ninos,
+      paxInfantes: datosResultado.data.pax_infantes,
+      checkInFecha: reserva.fecha_entrada ?? null,
+      checkInHora: reserva.hora_entrada ?? null,
+      checkOutFecha: reserva.fecha_salida ?? null,
+      checkOutHora: reserva.hora_salida ?? null,
+      observaciones: voucherDraft.observaciones,
+      ocupaciones: ocupacionesResultado.data.map((o: any): OcupacionVoucherInput => ({
+        orden: o.orden,
+        cantidad: o.cantidad,
+        ocupacion: o.ocupacion,
+        categoria: o.categoria,
+      })),
+      pasajeros: pasajerosResultado.data.map((p: any): PasajeroVoucherInput => ({
+        orden: p.orden,
+        nombreCompleto: p.nombre_completo,
+      })),
+    }
+
+    // The ONLY place this file constructs a VoucherDocData: straight from
+    // buildVoucherData()'s own validated return, never widened.
+    const resultado = buildVoucherData(input)
+
+    if (!resultado.ok) {
+      toast({
+        title: "No se puede generar el voucher",
+        description: `Faltan los siguientes campos: ${resultado.missing.join(" · ")}`,
+        variant: "destructive",
+      })
+      return null
+    }
+
+    return resultado.data
+  }
+
+  const generateVoucher = async () => {
+    if (!selectedReserva) {
+      toast({
+        title: "Selecciona una reserva",
+        description: "Por favor selecciona una reserva primero.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const data = await construirVoucherData(selectedReserva)
+    if (!data) return
+
+    const voucherHTML = generateVoucherDocHTML(data)
+    openDocumentInNewWindow(voucherHTML, `Voucher - ${selectedReserva.codigo}`)
   }
 
   const downloadVoucherAsPDF = async () => {
     if (!selectedReserva) {
-      alert("Por favor selecciona una reserva primero")
+      toast({
+        title: "Selecciona una reserva",
+        description: "Por favor selecciona una reserva primero.",
+        variant: "destructive",
+      })
       return
     }
 
-    // Prepare voucher data
-    const voucherData = {
-      cliente: {
-        nombre: selectedReserva.cliente?.nombre_completo || selectedReserva.cliente?.razon_social || customData.titular,
-        email: selectedReserva.cliente?.email || "cliente@email.com",
-        telefono: selectedReserva.cliente?.telefonos || "",
-        direccion: customData.destino || "Dirección del cliente",
-      },
-      reserva: {
-        numero: selectedReserva.codigo,
-        fecha: customData.fechaViaje,
-        servicio: customData.hotel || selectedReserva.producto?.nombre_producto || "Servicio turístico",
-        total: selectedReserva.precio_total,
-        moneda: "USD",
-      },
-      empresa: {
-        nombre: "GRUPO ELLIBRY SRL",
-        direccion: "Calle Juan Alejandro Ibarra #39, Piso 3, Local 305, Ensanche La Fe, Santo Domingo, D.N.",
-        telefono: "(809) 992-3548",
-        email: "informacion@aventurasturisticasconellibry.com",
-      },
-      // Pass additional data collected in the "Datos del Voucher" form (F4)
-      localizador: customData.localizador,
-      habitacion: customData.habitacion,
-      regimen: customData.regimen,
-      noches: customData.noches,
-      adultos: customData.adultos,
-      ninos: customData.ninos,
-      fechaEntrada: customData.fechaEntrada,
-      fechaSalida: customData.fechaSalida,
-      destino: customData.destino,
-      pasajeros: customData.pasajeros,
-      observaciones: customData.observaciones,
-    }
+    const data = await construirVoucherData(selectedReserva)
+    if (!data) return
 
-    // Generate the voucher HTML
-    const voucherHTML = generateVoucherHTML(voucherData)
+    const voucherHTML = generateVoucherDocHTML(data)
 
     // Create a temporary div to render the HTML
     const tempDiv = document.createElement("div")
@@ -368,7 +696,6 @@ export default function VoucherPage() {
     document.body.appendChild(tempDiv)
 
     try {
-      // Convert HTML to canvas
       const canvas = await html2canvas(tempDiv, {
         scale: 2,
         useCORS: true,
@@ -378,23 +705,30 @@ export default function VoucherPage() {
         height: 1123, // A4 height in pixels at 96 DPI
       })
 
-      // Create PDF
       const pdf = new jsPDF("p", "mm", "a4")
       const imgData = canvas.toDataURL("image/png")
-
-      // Add image to PDF
       pdf.addImage(imgData, "PNG", 0, 0, 210, 297)
-
-      // Download the PDF
       pdf.save(`voucher-${selectedReserva.codigo}.pdf`)
     } catch (error) {
       console.error("Error generating PDF:", error)
-      alert("Error al generar el PDF. Por favor intenta de nuevo.")
+      toast({
+        title: "Error al generar el PDF",
+        description: "Por favor intenta de nuevo.",
+        variant: "destructive",
+      })
     } finally {
-      // Clean up
       document.body.removeChild(tempDiv)
     }
   }
+
+  // T15 AC-2: the prep screen stays usable while `localizador` is absent —
+  // ONLY these two actions are gated, and ONLY on the PERSISTED localizador
+  // (never on an unsaved keystroke in voucherDraft.localizador).
+  const localizadorPersistidoAusente =
+    !datosVoucherPersistidos?.localizador || datosVoucherPersistidos.localizador.trim().length === 0
+  const generarDeshabilitado = !selectedReserva || localizadorPersistidoAusente
+
+  const nochesDisplay = calcularNochesDisplay(selectedReserva)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -452,33 +786,35 @@ export default function VoucherPage() {
                 ) : filteredReservas.length === 0 ? (
                   <div className="text-center py-4 text-gray-500">No se encontraron reservas</div>
                 ) : (
-                  filteredReservas.map((reserva) => (
-                    <div
-                      key={reserva.id}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        selectedReserva?.id === reserva.id
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                      onClick={() => handleReservaSelect(reserva)}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{reserva.codigo}</p>
-                          <p className="text-sm text-gray-600">
-                            {reserva.cliente?.nombre_completo || reserva.cliente?.razon_social}
-                          </p>
-                          <p className="text-sm text-gray-500">{reserva.producto?.nombre_producto}</p>
-                        </div>
-                        <div className="text-right">
-                          <Badge variant="outline" className="text-xs">
-                            {reserva.status}
-                          </Badge>
-                          <p className="text-sm font-medium mt-1">${reserva.precio_total.toLocaleString()}</p>
+                  filteredReservas.map((reserva) => {
+                    const clienteData = getClienteData(reserva.cliente_id)
+                    const productoData = getProductoData(reserva.producto_id)
+                    return (
+                      <div
+                        key={reserva.id}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                          selectedReserva?.id === reserva.id
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                        onClick={() => handleReservaSelect(reserva)}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium">{reserva.codigo}</p>
+                            <p className="text-sm text-gray-600">{clienteData.nombre}</p>
+                            <p className="text-sm text-gray-500">{productoData.nombre_producto}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="outline" className="text-xs">
+                              {reserva.status}
+                            </Badge>
+                            <p className="text-sm font-medium mt-1">${(reserva.precio_total || 0).toLocaleString()}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </CardContent>
@@ -491,234 +827,308 @@ export default function VoucherPage() {
                 <Receipt className="w-5 h-5 mr-2" />
                 Datos del Voucher
               </CardTitle>
-              <CardDescription>Personaliza la información del voucher</CardDescription>
+              <CardDescription>
+                {selectedReserva
+                  ? "Completa y guarda cada sección. El voucher solo se genera con datos ya guardados."
+                  : "Selecciona una reserva para comenzar"}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Información Básica */}
-              <div>
-                <Label htmlFor="titular">Titular *</Label>
-                <Input
-                  id="titular"
-                  value={customData.titular}
-                  onChange={(e) => handleInputChange("titular", e.target.value)}
-                  placeholder="Nombre del titular"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="titular">Titular</Label>
+                  <Input
+                    id="titular"
+                    value={voucherDraft.titular}
+                    onChange={(e) => handleVoucherDraftChange("titular", e.target.value)}
+                    placeholder="Nombre del titular"
+                    disabled={!selectedReserva}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="lugar">Lugar (hotel)</Label>
+                  <Input
+                    id="lugar"
+                    value={voucherDraft.lugar}
+                    onChange={(e) => handleVoucherDraftChange("lugar", e.target.value)}
+                    placeholder="Nombre del hotel"
+                    disabled={!selectedReserva}
+                  />
+                </div>
               </div>
 
               <Separator />
 
-              {/* Información del Viaje */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="fechaViaje">Fecha de Viaje</Label>
-                  <Input
-                    id="fechaViaje"
-                    type="date"
-                    value={customData.fechaViaje}
-                    onChange={(e) => handleInputChange("fechaViaje", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="destino">Destino</Label>
-                  <Input
-                    id="destino"
-                    value={customData.destino}
-                    onChange={(e) => handleInputChange("destino", e.target.value)}
-                    placeholder="País/Ciudad de destino"
-                  />
-                </div>
-              </div>
-
-              {/* Información del Hotel */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="hotel">Hotel</Label>
-                  <Input
-                    id="hotel"
-                    value={customData.hotel}
-                    onChange={(e) => handleInputChange("hotel", e.target.value)}
-                    placeholder="Nombre del hotel"
-                  />
-                </div>
+              {/* Localizador / Régimen / Pax — persisted to reservas (T11/T12) */}
+              <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="habitacion">Tipo de Habitación</Label>
-                    <Select
-                      value={customData.habitacion}
-                      onValueChange={(value) => handleInputChange("habitacion", value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="STANDARD">Standard</SelectItem>
-                        <SelectItem value="SUPERIOR">Superior</SelectItem>
-                        <SelectItem value="DELUXE">Deluxe</SelectItem>
-                        <SelectItem value="SUITE">Suite</SelectItem>
-                        <SelectItem value="JUNIOR_SUITE">Junior Suite</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="localizador">Localizador (código del proveedor) *</Label>
+                    <Input
+                      id="localizador"
+                      value={voucherDraft.localizador}
+                      onChange={(e) => handleVoucherDraftChange("localizador", e.target.value)}
+                      placeholder="Código que envía el hotel/proveedor"
+                      disabled={!selectedReserva}
+                    />
                   </div>
                   <div>
                     <Label htmlFor="regimen">Régimen</Label>
-                    <Select value={customData.regimen} onValueChange={(value) => handleInputChange("regimen", value)}>
-                      <SelectTrigger>
-                        <SelectValue />
+                    <Select
+                      value={voucherDraft.regimen}
+                      onValueChange={(value) => handleVoucherDraftChange("regimen", value)}
+                      disabled={!selectedReserva}
+                    >
+                      <SelectTrigger id="regimen">
+                        <SelectValue placeholder="Seleccionar régimen" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="TODO INCLUIDO">Todo Incluido</SelectItem>
-                        <SelectItem value="MEDIA PENSION">Media Pensión</SelectItem>
-                        <SelectItem value="PENSION COMPLETA">Pensión Completa</SelectItem>
-                        <SelectItem value="SOLO ALOJAMIENTO">Solo Alojamiento</SelectItem>
-                        <SelectItem value="DESAYUNO">Desayuno</SelectItem>
+                        {REGIMEN_OPCIONES.map((opcion) => (
+                          <SelectItem key={opcion.value} value={opcion.value}>
+                            {opcion.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="paxAdultos">Adultos</Label>
+                    <Input
+                      id="paxAdultos"
+                      type="number"
+                      min="0"
+                      value={voucherDraft.paxAdultos ?? ""}
+                      onChange={(e) => handlePaxInputChange("paxAdultos", e.target.value)}
+                      disabled={!selectedReserva}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="paxNinos">Niños</Label>
+                    <Input
+                      id="paxNinos"
+                      type="number"
+                      min="0"
+                      value={voucherDraft.paxNinos ?? ""}
+                      onChange={(e) => handlePaxInputChange("paxNinos", e.target.value)}
+                      disabled={!selectedReserva}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="paxInfantes">Infantes</Label>
+                    <Input
+                      id="paxInfantes"
+                      type="number"
+                      min="0"
+                      value={voucherDraft.paxInfantes ?? ""}
+                      onChange={(e) => handlePaxInputChange("paxInfantes", e.target.value)}
+                      disabled={!selectedReserva}
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={guardarDatosVoucher}
+                  disabled={!selectedReserva}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Guardar Localizador / Régimen / Pax
+                </Button>
               </div>
 
-              {/* Fechas de Estadía */}
+              <Separator />
+
+              {/* Check-in / Check-out — read-only, same reservas.fecha_entrada/hora_entrada/fecha_salida/hora_salida CONFIRMACIÓN uses */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="fechaEntrada">Check-in</Label>
-                  <Input
-                    id="fechaEntrada"
-                    type="date"
-                    value={customData.fechaEntrada}
-                    onChange={(e) => handleInputChange("fechaEntrada", e.target.value)}
-                  />
+                  <Label>Check-in</Label>
+                  <p className="text-sm mt-2">
+                    {selectedReserva?.fecha_entrada
+                      ? `${selectedReserva.fecha_entrada}${selectedReserva.hora_entrada ? ` ${selectedReserva.hora_entrada}` : ""}`
+                      : "No definido en la reserva"}
+                  </p>
                 </div>
                 <div>
-                  <Label htmlFor="fechaSalida">Check-out</Label>
-                  <Input
-                    id="fechaSalida"
-                    type="date"
-                    value={customData.fechaSalida}
-                    onChange={(e) => handleInputChange("fechaSalida", e.target.value)}
-                  />
+                  <Label>Check-out</Label>
+                  <p className="text-sm mt-2">
+                    {selectedReserva?.fecha_salida
+                      ? `${selectedReserva.fecha_salida}${selectedReserva.hora_salida ? ` ${selectedReserva.hora_salida}` : ""}`
+                      : "No definido en la reserva"}
+                  </p>
                 </div>
                 <div>
-                  <Label htmlFor="noches">Noches</Label>
-                  <Input
-                    id="noches"
-                    type="number"
-                    min="1"
-                    value={customData.noches}
-                    onChange={(e) => handleInputChange("noches", Number.parseInt(e.target.value) || 0)}
-                  />
+                  <Label>Noches (calculado)</Label>
+                  <p className="text-sm mt-2">{nochesDisplay !== null ? nochesDisplay : "—"}</p>
                 </div>
               </div>
 
-              {/* Ocupación */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="adultos">Adultos</Label>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleInputChange("adultos", Math.max(0, customData.adultos - 1))}
-                    >
-                      <MinusIcon className="w-4 h-4" />
-                    </Button>
-                    <Input
-                      id="adultos"
-                      type="number"
-                      min="0"
-                      value={customData.adultos}
-                      onChange={(e) => handleInputChange("adultos", Number.parseInt(e.target.value) || 0)}
-                      className="text-center"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleInputChange("adultos", customData.adultos + 1)}
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="ninos">Niños</Label>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleInputChange("ninos", Math.max(0, customData.ninos - 1))}
-                    >
-                      <MinusIcon className="w-4 h-4" />
-                    </Button>
-                    <Input
-                      id="ninos"
-                      type="number"
-                      min="0"
-                      value={customData.ninos}
-                      onChange={(e) => handleInputChange("ninos", Number.parseInt(e.target.value) || 0)}
-                      className="text-center"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleInputChange("ninos", customData.ninos + 1)}
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <Separator />
 
-              {/* Lista de Pasajeros */}
+              {/* Grupos de Ocupación (habitaciones) — reserva_ocupaciones (T2/T2b) */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <Label>Pasajeros</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addPassenger}>
+                  <Label>Grupos de Ocupación (habitaciones)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addOcupacionGrupo}
+                    disabled={!selectedReserva}
+                  >
                     <PlusIcon className="w-4 h-4 mr-1" />
-                    Agregar
+                    Agregar Grupo
                   </Button>
                 </div>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {customData.pasajeros.map((pasajero, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <span className="text-sm font-medium w-8">{index + 1})</span>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {ocupacionesEditor.map((grupo, index) => (
+                    <div key={index} className="flex items-center gap-2">
                       <Input
-                        value={pasajero}
-                        onChange={(e) => updatePassenger(index, e.target.value)}
-                        placeholder="Nombre del pasajero"
-                        className="flex-1"
+                        type="number"
+                        min="1"
+                        className="w-20"
+                        placeholder="Cant."
+                        value={grupo.cantidad ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          if (raw.trim() === "") {
+                            updateOcupacionGrupo(index, "cantidad", null)
+                            return
+                          }
+                          const parsed = Number.parseInt(raw, 10)
+                          updateOcupacionGrupo(index, "cantidad", Number.isNaN(parsed) ? null : parsed)
+                        }}
+                        disabled={!selectedReserva}
                       />
-                      {customData.pasajeros.length > 1 && (
-                        <Button type="button" variant="outline" size="sm" onClick={() => removePassenger(index)}>
+                      <Input
+                        placeholder="Ocupación (ej. DOBLE)"
+                        value={grupo.ocupacion}
+                        onChange={(e) => updateOcupacionGrupo(index, "ocupacion", e.target.value)}
+                        className="flex-1"
+                        disabled={!selectedReserva}
+                      />
+                      <Input
+                        placeholder="Categoría (ej. Junior Suite)"
+                        value={grupo.categoria}
+                        onChange={(e) => updateOcupacionGrupo(index, "categoria", e.target.value)}
+                        className="flex-1"
+                        disabled={!selectedReserva}
+                      />
+                      {ocupacionesEditor.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeOcupacionGrupo(index)}
+                          disabled={!selectedReserva}
+                        >
                           <X className="w-4 h-4" />
                         </Button>
                       )}
                     </div>
                   ))}
                 </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={guardarOcupaciones}
+                  disabled={!selectedReserva}
+                  className="mt-2 bg-blue-600 hover:bg-blue-700"
+                >
+                  Guardar Ocupaciones
+                </Button>
               </div>
 
-              {/* Observaciones */}
+              <Separator />
+
+              {/* Lista de Pasajeros — reserva_pasajeros (T2), same table CONFIRMACIÓN uses */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label>Pasajeros</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addPasajeroVoucher}
+                    disabled={!selectedReserva}
+                  >
+                    <PlusIcon className="w-4 h-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {pasajerosEditor.map((pasajero, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="text-sm font-medium w-8">{index + 1})</span>
+                      <Input
+                        value={pasajero.nombreCompleto}
+                        onChange={(e) => updatePasajeroVoucherNombre(index, e.target.value)}
+                        placeholder="Nombre del pasajero"
+                        className="flex-1"
+                        disabled={!selectedReserva}
+                      />
+                      <Select
+                        value={pasajero.tipoPax}
+                        onValueChange={(value) => updatePasajeroVoucherTipo(index, value as TipoPax)}
+                        disabled={!selectedReserva}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ADULTO">Adulto</SelectItem>
+                          <SelectItem value="NINO">Niño</SelectItem>
+                          <SelectItem value="INFANTE">Infante</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {pasajerosEditor.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removePasajeroVoucher(index)}
+                          disabled={!selectedReserva}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={guardarPasajeros}
+                  disabled={!selectedReserva}
+                  className="mt-2 bg-blue-600 hover:bg-blue-700"
+                >
+                  Guardar Pasajeros
+                </Button>
+              </div>
+
+              {/* Observaciones — free text for THIS document only, not persisted */}
               <div>
                 <Label htmlFor="observaciones">Observaciones</Label>
                 <Textarea
                   id="observaciones"
-                  value={customData.observaciones}
-                  onChange={(e) => handleInputChange("observaciones", e.target.value)}
+                  value={voucherDraft.observaciones}
+                  onChange={(e) => handleVoucherDraftChange("observaciones", e.target.value)}
                   placeholder="Notas especiales o instrucciones adicionales..."
                   rows={3}
+                  disabled={!selectedReserva}
                 />
               </div>
 
               <Separator />
 
-              {/* Botones de Generar */}
+              {/* Botones de Generar — bloqueados mientras el LOCALIZADOR persistido esté ausente (T15 AC-2) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Button
                   onClick={generateVoucher}
-                  disabled={!selectedReserva}
+                  disabled={generarDeshabilitado}
                   className="w-full"
                   style={{ backgroundColor: "#3399cc" }}
                 >
@@ -727,7 +1137,7 @@ export default function VoucherPage() {
                 </Button>
                 <Button
                   onClick={downloadVoucherAsPDF}
-                  disabled={!selectedReserva}
+                  disabled={generarDeshabilitado}
                   variant="outline"
                   className="w-full bg-transparent"
                 >
@@ -735,6 +1145,12 @@ export default function VoucherPage() {
                   Descargar como PDF
                 </Button>
               </div>
+              {selectedReserva && localizadorPersistidoAusente && (
+                <p className="text-sm text-red-600">
+                  Guarda un LOCALIZADOR (código del proveedor) antes de generar o descargar el voucher. El resto de
+                  esta pantalla puede completarse y guardarse mientras tanto.
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -761,22 +1177,20 @@ export default function VoucherPage() {
                   <Users className="w-4 h-4 text-gray-500" />
                   <div>
                     <p className="text-sm text-gray-500">Cliente</p>
-                    <p className="font-medium">
-                      {selectedReserva.cliente?.nombre_completo || selectedReserva.cliente?.razon_social}
-                    </p>
+                    <p className="font-medium">{getClienteData(selectedReserva.cliente_id).nombre}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <MapPin className="w-4 h-4 text-gray-500" />
                   <div>
                     <p className="text-sm text-gray-500">Producto</p>
-                    <p className="font-medium">{selectedReserva.producto?.nombre_producto}</p>
+                    <p className="font-medium">{getProductoData(selectedReserva.producto_id).nombre_producto}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Plane className="w-4 h-4 text-gray-500" />
                   <div>
-                    <p className="text-sm text-gray-500">Pasajeros</p>
+                    <p className="text-sm text-gray-500">Pasajeros (reserva)</p>
                     <p className="font-medium">{selectedReserva.pasajeros}</p>
                   </div>
                 </div>

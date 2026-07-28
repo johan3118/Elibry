@@ -640,7 +640,7 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
             <!-- Page 2: Confirmación Content -->
             <div class="page proforma-page">
               <div class="page-number">Page 1 of 2</div>
-              <div class="confirmation-badge">CONFIRMACIÓN DE SERVICIOS</div>
+              <div class="confirmation-badge">CONFIRMACION DE SERVICIOS</div>
               <div class="header-logo"></div>
 
               <div class="content-section">
@@ -654,7 +654,7 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
                       <span class="info-label">NOMBRE:</span> Maria Fernandez
                     </div>
                     <div class="info-line">
-                      <span class="info-label">CÉDULA/RNC:</span> 001-1234567-8
+                      <span class="info-label">CEDULA/RNC:</span> 001-1234567-8
                     </div>
                     <div class="info-line">
                       <span class="info-label">EMAIL:</span> maria@example.com
@@ -717,8 +717,7 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
                     
                       <tr>
                         <td>
-                          HABITACION DOBLE<br>
-                          <small>TITULAR: MARIA FERNANDEZ</small>
+                          HABITACION DOBLE
                         </td>
                         <td>25,000.00</td>
                         <td>0.00</td>
@@ -727,8 +726,7 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
                     
                       <tr>
                         <td>
-                          TRASLADO AEROPUERTO<br>
-                          <small>TITULAR: MARIA FERNANDEZ</small>
+                          TRASLADO AEROPUERTO
                         </td>
                         <td>2,500.00</td>
                         <td>100.00</td>
@@ -755,10 +753,10 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
                     <span class="totals-label balance-pending">BALANCE RESERVA:</span><span class="totals-value balance-pending">17,400.00</span>
                   </div>
                   <div class="totals-row">
-                    <span class="totals-label balance-general">BALANCE GENERAL RD $</span><span class="totals-value balance-general">17,400.00</span>
+                    <span class="totals-label balance-general">BALANCE GENERAL EN RD $</span><span class="totals-value balance-general">17,400.00</span>
                   </div>
                   <div class="totals-row">
-                    <span class="totals-label balance-general">BALANCE GENERAL US $</span><span class="totals-value balance-general">0.00</span>
+                    <span class="totals-label balance-general">BALANCE GENERAL EN US $</span><span class="totals-value balance-general">0.00</span>
                   </div>
                 </div>
 
@@ -804,20 +802,12 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
                 <!-- Content is now overlaid on the background image -->
               </div>
 
-              <div class="office-visit">
-                <div class="office-title">También puede pasar por nuestra oficina, debe avisar antes de ir:</div>
-                <div class="office-address">
-                  <strong>Dirección:</strong> Calle Juan Alejandro Ibarra #39, Piso 3, Local 305, Ensanche La Fe, Santo Domingo,<br>
-                  Distrito Nacional, Rep. Dom.
-                </div>
-              </div>
-
               <div class="contact-footer">
                 <div class="contact-logo"></div>
                 <div>
-                  <strong>Dirección:</strong> Calle Juan Alejandro Ibarra # 39, 3er Piso, Local 305, Ensanche La Fe, D.N. Sto. Dgo.<br>
-                  <strong>Contactos:</strong> 809•992•3548 • 829•633•3548 • 829•769•6781 / <strong>Email:</strong> informacion@aventurasturisticasconellibry.com<br>
-                  <strong>RNC:</strong> 132739622 / <strong>Instagram:</strong> @aventurasturisticasconellibry / <strong>Pag. Web:</strong> aventurasturisticasconellibry.com
+                  <strong>Dirección:</strong> Avenida Jacobo Majluta, Plaza Toledo, Piso 1, Local 106, Arroyo Hondo, Distrito Nacional, Sto. Dgo.<br>
+                  <strong>Contactos:</strong> 809•537•4070 • 849•252•2022 / 809•882•5675 / <strong>Email:</strong> servicio@grupoellibry.com<br>
+                  <strong>RNC:</strong> 132739622 / <strong>Instagram:</strong> @grupoellibry / <strong>Pag. Web:</strong> grupoellibry.com
                 </div>
               </div>
             </div>
@@ -845,5 +835,59 @@ describe("generateConfirmacionHTML — legacy generators untouched (HC-5 out of 
     const mod = await import("../lib/document-generator")
     expect(typeof mod.generateProformaHTML).toBe("function")
     expect(typeof mod.generateReciboHTML).toBe("function")
+  })
+})
+
+describe("generateConfirmacionHTML — T10 Grupo Ellibry identity pinned by narrow assertions", () => {
+  const out = generateConfirmacionHTML(CLEAN_FIXTURE)
+
+  // Positive assertions: corrected Grupo Ellibry identity MUST be present
+  it("contains the corrected address: Avenida Jacobo Majluta, Plaza Toledo, Piso 1, Local 106, Arroyo Hondo, Distrito Nacional, Sto. Dgo.", () => {
+    expect(out).toContain("Avenida Jacobo Majluta, Plaza Toledo, Piso 1, Local 106, Arroyo Hondo, Distrito Nacional, Sto. Dgo.")
+  })
+
+  it("contains the corrected phone numbers: 809•537•4070 • 849•252•2022 / 809•882•5675 (with U+2022 bullets)", () => {
+    expect(out).toContain("809•537•4070 • 849•252•2022 / 809•882•5675")
+  })
+
+  it("contains the corrected email: servicio@grupoellibry.com", () => {
+    expect(out).toContain("servicio@grupoellibry.com")
+  })
+
+  it("contains the corrected RNC: 132739622", () => {
+    expect(out).toContain("132739622")
+  })
+
+  it("contains the corrected Instagram handle: @grupoellibry", () => {
+    expect(out).toContain("@grupoellibry")
+  })
+
+  it("contains the corrected website: grupoellibry.com", () => {
+    expect(out).toContain("grupoellibry.com")
+  })
+
+  // Negative assertions: old aventurasturisticasconellibry identity MUST NOT appear
+  it("does NOT contain the old Instagram handle: aventurasturisticasconellibry", () => {
+    expect(out).not.toContain("aventurasturisticasconellibry")
+  })
+
+  it("does NOT contain the old address: Calle Juan Alejandro Ibarra", () => {
+    expect(out).not.toContain("Calle Juan Alejandro Ibarra")
+  })
+
+  it("does NOT contain the old phone number: 809•992•3548", () => {
+    expect(out).not.toContain("809•992•3548")
+  })
+
+  it("does NOT contain the old office-visit text: Tambien puede pasar por nuestra oficina", () => {
+    // The source text has "También" with accent; match the exact string from the code
+    expect(out).not.toContain("Tambien puede pasar por nuestra oficina")
+    expect(out).not.toContain("También puede pasar por nuestra oficina")
+  })
+
+  // Structural assertion: Dirección label appears exactly once
+  it("contains the Dirección label exactly once in the rendered output", () => {
+    const matches = out.split("<strong>Dirección:</strong>")
+    expect(matches.length - 1).toBe(1)
   })
 })

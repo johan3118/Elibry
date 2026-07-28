@@ -1,6 +1,7 @@
 "use server"
 
-// ROLLBACK: delete app/actions/documentos-actions.ts and tests/documentos-actions.test.ts — both untracked, nothing imports them yet.
+// ROLLBACK: this file is TRACKED and shared by T1/T2/T2b/T5/T7/T12 — do NOT
+// delete it. Roll back per-commit (revert the specific task's commit) instead.
 
 import { createClient } from "@supabase/supabase-js"
 
@@ -927,5 +928,219 @@ export async function getFacturaNumeroPorReservaAction(reservaId: number): Promi
   } catch (error: any) {
     const detalle = error?.message || "error desconocido"
     return { ok: false, reason: "LOOKUP_FAILED", detail: detalle, message: mensajeLookupFailed(detalle) }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T12 — Voucher server actions: localizador / régimen / pax breakdown
+// (docs/plans/geb-documents-real-data.md §5, §11 T12). Reads/writes ONLY the
+// five nullable columns scripts/062-add-voucher-fields-to-reservas.sql (T11)
+// added to `reservas` — localizador, regimen, pax_adultos, pax_ninos,
+// pax_infantes. Every other write path in this file targets
+// reserva_pasajeros/reserva_ocupaciones; this is the ONLY one that targets
+// `reservas` itself, and it NEVER touches the trigger-owned columns
+// (precio_total, descuento, pasajeros, habitaciones — scripts/023's
+// recalcular_totales_reserva() owns those exclusively; grep this function's
+// body for those four identifiers and it returns nothing).
+//
+// T12 ROLLBACK (task-specific — does not override the file-level T2 note at
+// the top): revert this commit. Nothing outside this file imports
+// getDatosVoucherReservaAction/guardarDatosVoucherReservaAction yet (T15
+// wires app/facturacion/voucher/page.tsx to them, and has not run) — no
+// other file depends on their existence being removed.
+//
+// *** THE LOCALIZADOR IS THE POINT OF THIS TASK *** The old code
+// (app/facturacion/voucher/page.tsx:225, generateVoucherNumber — NOT in this
+// task's scope, that page is T15) built a "localizador" from date +
+// Math.random() on every click and never persisted it, so the SAME reserva
+// produced a DIFFERENT localizador every time the voucher was regenerated. A
+// localizador is the SUPPLIER's confirmation code — it identifies the
+// booking to the hotel, and a changing one is worse than none because the
+// hotel cannot match it. This module NEVER generates, defaults, or
+// synthesizes a localizador — an agent types it, and this module only
+// persists/reads it back verbatim, so the SAME reserva returns the SAME
+// value on every subsequent read until someone deliberately changes it.
+//
+// *** BLOCK-NEVER-DEFAULT, APPLIED LITERALLY (T12 AC-2) *** The pax columns
+// are the sharp case: `0` is a LEGITIMATE value ("zero children on this
+// booking"), `null` is an explicit "clear to not supplied", and `undefined`
+// (the key simply absent from the input object) is the ONLY thing that
+// leaves the column untouched on a write. The write path below tests
+// `!== undefined` — NEVER truthiness (`if (value)` would treat a genuine `0`
+// as "no value supplied" and silently skip writing it, recreating
+// mistakes/stockin-zero-price at the exact column this task exists to fix).
+// A negative or non-integer pax count is rejected BEFORE the DB is touched,
+// with the SPECIFIC field named in the error — never a generic "pax
+// inválido" that collapses all three fields into one indistinguishable
+// message.
+//
+// `regimen` is free text the agent types (e.g. "TODO INCLUIDO"). A blank or
+// whitespace-only value is "not supplied", not a value — it is saved as
+// NULL, never as "" and never defaulted to a fixed string. The old code
+// (app/facturacion/voucher/page.tsx:214) hardcoded "TODO INCLUIDO"; this
+// module does not repeat that.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CAMPOS_PAX_VOUCHER = ["pax_adultos", "pax_ninos", "pax_infantes"] as const
+
+export interface DatosVoucherInput {
+  /**
+   * The supplier's confirmation code. `undefined` = leave the column
+   * untouched; `null` or a blank/whitespace-only string = "not supplied"
+   * (persisted as NULL, never as ""); a non-blank string is trimmed and
+   * persisted VERBATIM — this module never generates one.
+   */
+  localizador?: string | null
+  /**
+   * Free text (e.g. "TODO INCLUIDO"). Same blank/whitespace-only -> NULL
+   * rule as localizador. Never defaulted to any fixed string.
+   */
+  regimen?: string | null
+  pax_adultos?: number | null
+  pax_ninos?: number | null
+  pax_infantes?: number | null
+}
+
+export interface DatosVoucherReserva {
+  localizador: string | null
+  regimen: string | null
+  pax_adultos: number | null
+  pax_ninos: number | null
+  pax_infantes: number | null
+}
+
+/**
+ * Block-never-default (mistakes/stockin-zero-price), applied literally per
+ * T12 AC-2: a pax field that is `undefined` is simply not being supplied —
+ * skipped here, left untouched by the write below. A pax field that IS
+ * present (including `null`, an explicit "clear to not supplied") is
+ * validated: it must be a finite integer >= 0. Negative and non-integer
+ * values are rejected with the SPECIFIC field named — never a generic
+ * message that collapses all three fields together.
+ */
+function validateDatosVoucherInput(input: DatosVoucherInput): string | null {
+  const errores: string[] = []
+
+  for (const campo of CAMPOS_PAX_VOUCHER) {
+    const valor = input[campo]
+    // not supplied / explicit clear-to-null — both are valid, nothing to check.
+    if (valor === undefined || valor === null) continue
+
+    if (typeof valor !== "number" || !Number.isFinite(valor) || !Number.isInteger(valor) || valor < 0) {
+      errores.push(`${campo}: debe ser un número entero mayor o igual a 0 (no puede ser negativo ni decimal)`)
+    }
+  }
+
+  return errores.length > 0 ? errores.join("; ") : null
+}
+
+/**
+ * Normalizes a free-text field (localizador/regimen) per the blank->NULL
+ * rule: a value that is present but blank/whitespace-only is "not
+ * supplied", saved as NULL — never as "", and never a fixed default. A
+ * non-blank value is trimmed and persisted VERBATIM.
+ */
+function normalizarTextoLibreONull(valor: string | null): string | null {
+  if (valor === null) return null
+  const recortado = valor.trim()
+  return recortado.length > 0 ? recortado : null
+}
+
+/**
+ * Builds the exact `reservas` UPDATE payload from a DatosVoucherInput,
+ * setting ONLY the keys whose value is `!== undefined` (T12 AC-2) — this is
+ * the ONLY test used; a truthiness check anywhere here would silently drop
+ * a genuine `0` for pax_ninos/pax_infantes/pax_adultos. Never includes
+ * precio_total/descuento/pasajeros/habitaciones — those are exclusively
+ * owned by scripts/023's recalcular_totales_reserva() trigger and this
+ * function has no branch that could ever add them.
+ */
+function construirActualizacionVoucher(input: DatosVoucherInput): Record<string, unknown> {
+  const actualizacion: Record<string, unknown> = {}
+
+  if (input.localizador !== undefined) {
+    actualizacion.localizador = normalizarTextoLibreONull(input.localizador)
+  }
+  if (input.regimen !== undefined) {
+    actualizacion.regimen = normalizarTextoLibreONull(input.regimen)
+  }
+  for (const campo of CAMPOS_PAX_VOUCHER) {
+    if (input[campo] !== undefined) {
+      actualizacion[campo] = input[campo]
+    }
+  }
+
+  return actualizacion
+}
+
+/**
+ * Reads the voucher-specific fields of one reserva — localizador, regimen,
+ * and the pax breakdown — directly off `reservas` (T11's five additive
+ * columns). Returns NULL honestly for anything not supplied; NEVER invents
+ * a localizador and NEVER returns "" for an absent value that a caller
+ * could mistake for a real one. A `0` pax count is returned as `0`,
+ * distinct from `null` — see DatosVoucherReserva.
+ */
+export async function getDatosVoucherReservaAction(reservaId: number) {
+  try {
+    const supabase = createSupabaseServerClient()
+    const { data, error } = await supabase
+      .from("reservas")
+      .select("localizador, regimen, pax_adultos, pax_ninos, pax_infantes")
+      .eq("id", reservaId)
+
+    if (error) return { success: false, error: error.message }
+
+    const filas = (data ?? []) as Record<string, unknown>[]
+    if (filas.length === 0) {
+      return { success: false, error: `reserva ${reservaId} no encontrada` }
+    }
+
+    const fila = filas[0]
+    const datos: DatosVoucherReserva = {
+      localizador: (fila.localizador as string | null | undefined) ?? null,
+      regimen: (fila.regimen as string | null | undefined) ?? null,
+      pax_adultos: (fila.pax_adultos as number | null | undefined) ?? null,
+      pax_ninos: (fila.pax_ninos as number | null | undefined) ?? null,
+      pax_infantes: (fila.pax_infantes as number | null | undefined) ?? null,
+    }
+
+    return { success: true, data: datos }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error desconocido" }
+  }
+}
+
+/**
+ * Writes ONLY the voucher fields explicitly supplied (`!== undefined`) on
+ * one reserva. See the module-level T12 doc block above for the full rule.
+ * NEVER writes precio_total/descuento/pasajeros/habitaciones (trigger-owned,
+ * scripts/023) — this function has no code path that could add them.
+ *
+ * If EVERY field is `undefined` there is nothing to persist — this returns
+ * `{ success: false, error }` naming that, rather than silently reporting
+ * success for a call that touched nothing.
+ */
+export async function guardarDatosVoucherReservaAction(reservaId: number, input: DatosVoucherInput) {
+  try {
+    const validationError = validateDatosVoucherInput(input)
+    if (validationError) return { success: false, error: validationError }
+
+    const actualizacion = construirActualizacionVoucher(input)
+
+    if (Object.keys(actualizacion).length === 0) {
+      return {
+        success: false,
+        error: "guardarDatosVoucherReservaAction: ningún campo tiene un valor definido para actualizar",
+      }
+    }
+
+    const supabase = createSupabaseServerClient()
+    const { data, error } = await supabase.from("reservas").update(actualizacion).eq("id", reservaId).select()
+
+    if (error) return { success: false, error: error.message }
+    return { success: true, data }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error desconocido" }
   }
 }

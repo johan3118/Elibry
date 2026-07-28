@@ -1,0 +1,70 @@
+-- Additive reservas columns for the VOUCHER
+-- (geb-documents-real-data sprint, Task 11 — see docs/plans/geb-documents-real-data.md §4.2)
+--
+-- WHY: the VOUCHER needs five pieces of data that exist nowhere in the schema
+-- today: localizador (the supplier's confirmation/locator code), regimen
+-- ("TODO INCLUIDO" etc, today hardcoded at
+-- app/facturacion/voucher/page.tsx:214), and a pax breakdown by type
+-- (pax_adultos, pax_ninos, pax_infantes) distinct from the existing
+-- reservas.pasajeros total, which is trigger-owned by
+-- recalcular_totales_reserva() (scripts/023) and is a plain count, not a
+-- per-type breakdown.
+--
+-- ALL FIVE COLUMNS ARE NULLABLE ON PURPOSE, WITH NO DEFAULT
+-- (mistakes/stockin-zero-price, applied at the schema level): NULL means
+-- "not supplied"; 0 means "genuinely zero adults/ninos/infantes" for
+-- pax_adultos/pax_ninos/pax_infantes. A DEFAULT 0 would make "nobody filled
+-- this in" indistinguishable from "there are zero children on this
+-- booking", and the voucher would confidently print a wrong pax count.
+-- Same reasoning for localizador and regimen: NULL means "not supplied",
+-- never a synthesized placeholder string.
+--
+-- localizador SPECIFICALLY: the supplier issues this AFTER the reserva is
+-- created (see plan §"WHY LOCALIZADOR IS NULLABLE AND MATTERS"), so it
+-- cannot be NOT NULL at creation time. The prior code
+-- (generateVoucherNumber(), app/facturacion/voucher/page.tsx:225-234)
+-- generated a fresh date+Math.random() value on every click and never
+-- persisted it — this column is what T12 will persist into instead. NO
+-- UNIQUE CONSTRAINT is added on localizador in this migration: the supplier
+-- is the source of truth for the value and this sprint does not know
+-- whether two reservas could legitimately share one supplier locator (e.g.
+-- one supplier confirmation covering a multi-room block); inventing a
+-- uniqueness rule the plan does not state would be guessing at a contract,
+-- not reading one. If a real uniqueness rule is needed later, that is a
+-- follow-up schema task, not a silent addition here.
+--
+-- This migration is additive and non-destructive: it does NOT touch any
+-- existing reservas column, in particular the trigger-owned
+-- precio_total/descuento/pasajeros/habitaciones written by
+-- recalcular_totales_reserva() (scripts/023-create-reserva-detalles-table-fixed.sql:49-113,
+-- verified at :66-90 for the exact column list). None of the five new names
+-- below (localizador, regimen, pax_adultos, pax_ninos, pax_infantes)
+-- collides with a trigger-owned column or with any existing reservas
+-- column (grepped: none of the five appear anywhere in scripts/ or
+-- lib/supabase.ts before this file).
+--
+-- RLS: reservas is a pre-existing table with NO RLS today (repo-wide grep:
+-- zero policies before scripts/061). These are additive COLUMNS on an
+-- existing table, not a new table, so ADR-0006's "every new table ships a
+-- named policy" does not apply here — it was already satisfied for this
+-- sprint's actual new tables by scripts/061. Enabling RLS on reservas
+-- retroactively would require an org/staff predicate for every existing
+-- read/write path across the app and is explicitly OUT OF SCOPE for this
+-- sprint (HC-1, human-acknowledged, tracked as Risk R1). This migration
+-- does not enable RLS on reservas and does not add or change any policy.
+--
+-- No BEGIN/COMMIT wrapper: unlike scripts/061 (which depends on the PG15+
+-- `ON DELETE SET NULL (col)` form and can genuinely half-apply on an older
+-- server), every statement below is plain, version-agnostic
+-- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ... TEXT|INTEGER` syntax with no
+-- version-gated dependency, matching scripts/060's convention (also
+-- unwrapped). A wrapper here would be free insurance but its absence is not
+-- a half-apply risk the way it is for scripts/061.
+--
+-- ROLLBACK: ALTER TABLE reservas DROP COLUMN IF EXISTS localizador, DROP COLUMN IF EXISTS regimen, DROP COLUMN IF EXISTS pax_adultos, DROP COLUMN IF EXISTS pax_ninos, DROP COLUMN IF EXISTS pax_infantes;
+
+ALTER TABLE reservas ADD COLUMN IF NOT EXISTS localizador   TEXT;
+ALTER TABLE reservas ADD COLUMN IF NOT EXISTS regimen       TEXT;
+ALTER TABLE reservas ADD COLUMN IF NOT EXISTS pax_adultos   INTEGER;
+ALTER TABLE reservas ADD COLUMN IF NOT EXISTS pax_ninos     INTEGER;
+ALTER TABLE reservas ADD COLUMN IF NOT EXISTS pax_infantes  INTEGER;

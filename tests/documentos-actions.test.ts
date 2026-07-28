@@ -61,9 +61,12 @@ import {
   guardarOcupacionesReservaAction,
   registrarDiscrepanciaTotalesAction,
   getFacturaNumeroPorReservaAction,
+  getDatosVoucherReservaAction,
+  guardarDatosVoucherReservaAction,
   type PasajeroInput,
   type OcupacionInput,
   type DiscrepanciaTotalesPayload,
+  type DatosVoucherInput,
 } from "../app/actions/documentos-actions"
 
 /** Queues one builder per call to supabase.from(...), in call order. */
@@ -1756,5 +1759,374 @@ describe("getFacturaNumeroPorReservaAction — T7/HC-2 read-only lookup that BLO
     // of the two calls below — this is the fixture Mutation D must turn red.
     expect(builder.eq).toHaveBeenNthCalledWith(1, "reserva_id", 7)
     expect(builder.eq).toHaveBeenNthCalledWith(2, "reserva_id", 58493)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T12 — Voucher server actions: localizador / régimen / pax breakdown
+// (docs/plans/geb-documents-real-data.md §5, §11 T12). Every fixture below
+// uses its OWN distinct, non-42, non-shared reservaId — per the lead's
+// standing instruction (T7 was sent back for 14 fixtures sharing one
+// literal). Assertions are on the ACTUAL captured arguments/returned values,
+// never on call counts alone.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("getDatosVoucherReservaAction", () => {
+  it("happy path — returns localizador/regimen/pax fields for one reserva", async () => {
+    const reservaId = 5001
+    const builder = makeQueryBuilder({
+      data: [{ localizador: "HTL-998877", regimen: "TODO INCLUIDO", pax_adultos: 2, pax_ninos: 1, pax_infantes: 0 }],
+      error: null,
+    })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDatosVoucherReservaAction(reservaId)
+
+    expect(result.success).toBe(true)
+    expect((result as any).data).toEqual({
+      localizador: "HTL-998877",
+      regimen: "TODO INCLUIDO",
+      pax_adultos: 2,
+      pax_ninos: 1,
+      pax_infantes: 0,
+    })
+    expect(mockFrom).toHaveBeenCalledWith("reservas")
+    expect(builder.select).toHaveBeenCalledWith("localizador, regimen, pax_adultos, pax_ninos, pax_infantes")
+    expect(builder.eq).toHaveBeenCalledWith("id", reservaId)
+  })
+
+  it("a reserva with NO localizador reads NULL honestly — never invents one, never returns '' (the empty string a caller could mistake for real)", async () => {
+    const reservaId = 5002
+    const builder = makeQueryBuilder({
+      data: [{ localizador: null, regimen: null, pax_adultos: null, pax_ninos: null, pax_infantes: null }],
+      error: null,
+    })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDatosVoucherReservaAction(reservaId)
+
+    expect(result.success).toBe(true)
+    expect((result as any).data.localizador).toBeNull()
+    expect((result as any).data.localizador).not.toBe("")
+  })
+
+  it("pax_ninos:0 reads back as 0 — DISTINCT from pax_adultos:null in the SAME row (0 vs not-supplied must round-trip distinctly)", async () => {
+    const reservaId = 5003
+    const builder = makeQueryBuilder({
+      data: [{ localizador: null, regimen: null, pax_adultos: null, pax_ninos: 0, pax_infantes: null }],
+      error: null,
+    })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDatosVoucherReservaAction(reservaId)
+
+    expect((result as any).data.pax_ninos).toBe(0)
+    expect((result as any).data.pax_adultos).toBeNull()
+    // Sanity: 0 is not accidentally coerced to null anywhere in the read path.
+    expect((result as any).data.pax_ninos).not.toBeNull()
+  })
+
+  it("error path — surfaces (never swallows) a DB error", async () => {
+    const reservaId = 5004
+    queueFromResults({ data: null, error: { message: "connection refused" } })
+
+    const result = await getDatosVoucherReservaAction(reservaId)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toBe("connection refused")
+  })
+
+  it("no row for that id — an honest named error, never a fabricated empty record", async () => {
+    const reservaId = 5005
+    const builder = makeQueryBuilder({ data: [], error: null })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDatosVoucherReservaAction(reservaId)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain(String(reservaId))
+  })
+
+  it("exception path — returns success:false when supabase.from itself throws (never throws into the caller)", async () => {
+    mockFrom.mockImplementation(() => {
+      throw new Error("boom")
+    })
+    const result = await getDatosVoucherReservaAction(5006)
+    expect(result.success).toBe(false)
+    expect((result as any).error).toBe("boom")
+  })
+})
+
+describe("guardarDatosVoucherReservaAction — block-never-default, applied literally", () => {
+  it("SAVE-THEN-READ ROUND-TRIP — the SAME localizador comes back from a SEPARATE subsequent read (reproducibility is the whole point of T12)", async () => {
+    const reservaId = 6001
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, localizador: "HTL-556677" }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const saveResult = await guardarDatosVoucherReservaAction(reservaId, { localizador: "HTL-556677" })
+    expect(saveResult.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ localizador: "HTL-556677" })
+    expect(updateBuilder.eq).toHaveBeenCalledWith("id", reservaId)
+
+    const readBuilder = makeQueryBuilder({
+      data: [{ localizador: "HTL-556677", regimen: null, pax_adultos: null, pax_ninos: null, pax_infantes: null }],
+      error: null,
+    })
+    mockFrom.mockImplementation(() => readBuilder)
+    const readResult = await getDatosVoucherReservaAction(reservaId)
+    expect((readResult as any).data.localizador).toBe("HTL-556677")
+  })
+
+  it("`{ pax_ninos: 0 }` WRITES 0 — the sharp case: 0 is a legitimate value, never treated as 'not supplied'", async () => {
+    const reservaId = 6002
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, pax_ninos: 0 }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, { pax_ninos: 0 })
+
+    expect(result.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ pax_ninos: 0 })
+  })
+
+  it("`{ pax_ninos: undefined }` LEAVES THE COLUMN UNTOUCHED — the key is omitted from the update payload entirely, never coerced to null or 0", async () => {
+    const reservaId = 6003
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, regimen: "TODO INCLUIDO" }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, {
+      regimen: "TODO INCLUIDO",
+      pax_ninos: undefined,
+    })
+
+    expect(result.success).toBe(true)
+    const actualizacionEnviada = updateBuilder.update.mock.calls[0][0]
+    expect(actualizacionEnviada).toEqual({ regimen: "TODO INCLUIDO" })
+    expect(Object.prototype.hasOwnProperty.call(actualizacionEnviada, "pax_ninos")).toBe(false)
+  })
+
+  it("pax_adultos:0 AND pax_ninos:0 in the SAME call BOTH write 0, alongside a non-zero pax_infantes — kills 'always writes null/skips on falsy'", async () => {
+    const reservaId = 6004
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, {
+      pax_adultos: 0,
+      pax_ninos: 0,
+      pax_infantes: 3,
+    })
+
+    expect(result.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ pax_adultos: 0, pax_ninos: 0, pax_infantes: 3 })
+  })
+
+  it("rejects a NEGATIVE pax_adultos BEFORE touching the DB, with pax_adultos named in the error", async () => {
+    const reservaId = 6005
+    const result = await guardarDatosVoucherReservaAction(reservaId, { pax_adultos: -1 })
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("pax_adultos")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("rejects a NON-INTEGER pax_ninos BEFORE touching the DB, with pax_ninos named in the error", async () => {
+    const reservaId = 6006
+    const result = await guardarDatosVoucherReservaAction(reservaId, { pax_ninos: 2.5 })
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("pax_ninos")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("rejects a NEGATIVE pax_infantes with ITS OWN named field — not a copy-pasted pax_adultos/pax_ninos message", async () => {
+    const reservaId = 6007
+    const result = await guardarDatosVoucherReservaAction(reservaId, { pax_infantes: -3 })
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("pax_infantes")
+    expect((result as any).error).not.toContain("pax_adultos")
+    expect((result as any).error).not.toContain("pax_ninos")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("a BLANK/whitespace-only localizador saves as NULL — never as '' and never generated", async () => {
+    const reservaId = 6008
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, localizador: null }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, { localizador: "   " })
+
+    expect(result.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ localizador: null })
+  })
+
+  it("a BLANK/whitespace-only regimen saves as NULL — never hardcoded to 'TODO INCLUIDO' (the old bug at voucher/page.tsx:214)", async () => {
+    const reservaId = 6009
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, regimen: null }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, { regimen: "" })
+
+    expect(result.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ regimen: null })
+  })
+
+  it("a non-blank regimen is trimmed and persisted VERBATIM — free text, never defaulted to any fixed string", async () => {
+    const reservaId = 6010
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, regimen: "MEDIA PENSION" }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, { regimen: "  MEDIA PENSION  " })
+
+    expect(result.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ regimen: "MEDIA PENSION" })
+  })
+
+  it("an explicit `localizador: null` clears it to NULL (a real, distinct outcome from `undefined` leaving it untouched)", async () => {
+    const reservaId = 6015
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId, localizador: null }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, { localizador: null })
+
+    expect(result.success).toBe(true)
+    expect(updateBuilder.update).toHaveBeenCalledWith({ localizador: null })
+  })
+
+  it("NEVER writes trigger-owned columns — precio_total/descuento/pasajeros/habitaciones absent from the update payload even on a full write", async () => {
+    const reservaId = 6011
+    const updateBuilder = makeQueryBuilder({ data: [{ id: reservaId }], error: null })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    await guardarDatosVoucherReservaAction(reservaId, {
+      localizador: "HTL-1",
+      regimen: "TODO INCLUIDO",
+      pax_adultos: 2,
+      pax_ninos: 0,
+      pax_infantes: 0,
+    })
+
+    const actualizacionEnviada = updateBuilder.update.mock.calls[0][0]
+    for (const columnaProhibida of ["precio_total", "descuento", "pasajeros", "habitaciones"]) {
+      expect(Object.prototype.hasOwnProperty.call(actualizacionEnviada, columnaProhibida)).toBe(false)
+    }
+  })
+
+  it("rejects a call where every field is undefined — nothing to update, never a silent no-op success", async () => {
+    const reservaId = 6012
+    const input: DatosVoucherInput = {}
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, input)
+
+    expect(result.success).toBe(false)
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("surfaces (never swallows) a DB error on the update", async () => {
+    const reservaId = 6013
+    const updateBuilder = makeQueryBuilder({ data: null, error: { message: "constraint violated" } })
+    mockFrom.mockImplementation(() => updateBuilder)
+
+    const result = await guardarDatosVoucherReservaAction(reservaId, { localizador: "HTL-2" })
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toBe("constraint violated")
+  })
+
+  it("exception path — returns success:false when supabase.from itself throws (never throws into the caller)", async () => {
+    mockFrom.mockImplementation(() => {
+      throw new Error("boom")
+    })
+    const result = await guardarDatosVoucherReservaAction(6014, { localizador: "HTL-3" })
+    expect(result.success).toBe(false)
+    expect((result as any).error).toBe("boom")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T12 AC-4 — guardarOcupacionesReservaAction round-trip: deleting a group
+// leaves its passengers (rows survive, ocupacion_id NULL), and per
+// T2b/HC-4 those passengers appear in enlacesDescartados during the SAME
+// save — never silently orphaned. This exercises BOTH actions together
+// (guardarOcupacionesReservaAction then a SUBSEQUENT getPasajerosReservaAction)
+// because that is the only way to prove the passenger ROW survives, as
+// opposed to merely trusting the save's own return value.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("T12 AC-4 — occupancy-group deletion round-trip via voucher actions", () => {
+  it("a discarded room's passenger SURVIVES with ocupacion_id NULL on a subsequent read, and was reported in enlacesDescartados during the save", async () => {
+    const reservaId = 7001
+    const ocupacionesAntes = [
+      { id: 900, orden: 1, ocupacion: "DOBLE", categoria: "Junior Suite" },
+      { id: 901, orden: 2, ocupacion: "TRIPLE", categoria: "Standard" },
+    ]
+    const pasajerosCaptureBuilder = makeQueryBuilder({
+      data: [
+        { id: 300, ocupacion_id: 900 },
+        { id: 301, ocupacion_id: 901 },
+      ],
+      error: null,
+    })
+    const ocupacionesAnterioresCaptureBuilder = makeQueryBuilder({ data: ocupacionesAntes, error: null })
+    const selectCaptureBuilder = makeQueryBuilder({ data: ocupacionesAntes, error: null })
+    const deleteBuilder = makeQueryBuilder({ data: null, error: null })
+    // Only room DOBLE survives the save — room TRIPLE (orden 2) is genuinely
+    // removed by the operator, so passenger 301 has nowhere to re-link to.
+    const insertBuilder = makeQueryBuilder({
+      data: [{ id: 950, reserva_id: reservaId, orden: 1, cantidad: 8, ocupacion: "DOBLE", categoria: "Junior Suite" }],
+      error: null,
+    })
+    const relinkUpdateBuilder = makeQueryBuilder({ data: [{ id: 300 }], error: null })
+    queueBuilders(
+      pasajerosCaptureBuilder,
+      ocupacionesAnterioresCaptureBuilder,
+      selectCaptureBuilder,
+      deleteBuilder,
+      insertBuilder,
+      relinkUpdateBuilder,
+    )
+
+    const saveResult = await guardarOcupacionesReservaAction(
+      reservaId,
+      [{ orden: 1, cantidad: 8, ocupacion: "DOBLE", categoria: "Junior Suite" }],
+      "user@test.com",
+    )
+
+    expect(saveResult.success).toBe(true)
+    expect((saveResult as any).enlacesDescartados).toEqual([301])
+
+    // A SEPARATE, subsequent read of the passengers proves passenger 301
+    // SURVIVES the room's removal (this is the DB's ON DELETE SET NULL, not
+    // an application-level passenger delete) with ocupacion_id NULL.
+    const pasajerosLuegoBuilder = makeQueryBuilder({
+      data: [
+        {
+          id: 300,
+          reserva_id: reservaId,
+          orden: 1,
+          ocupacion_id: 950,
+          nombre_completo: "Ana Perez",
+          tipo_pax: "ADULTO",
+        },
+        {
+          id: 301,
+          reserva_id: reservaId,
+          orden: 2,
+          ocupacion_id: null,
+          nombre_completo: "Luis Perez",
+          tipo_pax: "ADULTO",
+        },
+      ],
+      error: null,
+    })
+    mockFrom.mockImplementation(() => pasajerosLuegoBuilder)
+
+    const lecturaLuego = await getPasajerosReservaAction(reservaId)
+
+    expect(lecturaLuego.success).toBe(true)
+    const filasLuego = (lecturaLuego as any).data as any[]
+    const pasajero301 = filasLuego.find((p) => p.id === 301)
+    expect(pasajero301).toBeDefined() // the row SURVIVES — never deleted
+    expect(pasajero301.ocupacion_id).toBeNull()
+    // The surviving-and-relinked passenger is also still present, unaffected.
+    const pasajero300 = filasLuego.find((p) => p.id === 300)
+    expect(pasajero300.ocupacion_id).toBe(950)
   })
 })

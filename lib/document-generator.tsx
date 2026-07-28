@@ -1,39 +1,6 @@
 import type { ConfirmacionData } from "./confirmacion-data"
+import type { VoucherDocData } from "./voucher-data"
 import { html, renderHtml } from "./html-escape"
-
-export interface VoucherData {
-  cliente: {
-    nombre: string
-    email: string
-    telefono: string
-    direccion: string
-  }
-  reserva: {
-    numero: string
-    fecha: string
-    servicio: string
-    total: number
-    moneda: string
-  }
-  empresa: {
-    nombre: string
-    direccion: string
-    telefono: string
-    email: string
-  }
-  // Campos opcionales adicionales personalizados desde /facturacion/voucher (F4)
-  localizador?: string
-  habitacion?: string
-  regimen?: string
-  noches?: number
-  adultos?: number
-  ninos?: number
-  fechaEntrada?: string
-  fechaSalida?: string
-  destino?: string
-  pasajeros?: string[]
-  observaciones?: string
-}
 
 export interface ProformaData {
   cliente: {
@@ -89,11 +56,49 @@ export interface ReciboData {
   }
 }
 
-export function generateVoucherHTML(data: VoucherData): string {
-  const localizador = data.localizador || String(Math.floor(Math.random() * 90000) + 10000)
-
-  // Format helpers
-  const MONTHS_ES = [
+/**
+ * T14 (docs/plans/geb-documents-real-data.md) — VOUCHER, rewritten wholesale
+ * against `VoucherDocData` (T13, lib/voucher-data.ts). Every fabrication the
+ * legacy function carried is gone: no random localizador, no `noches ... : 3`
+ * fallback, no hardcoded "03:00 PM"/"12:00 PM", no `"TODO INCLUIDO"` default,
+ * no fake "1) {cliente} / 2) Acompañante" passenger placeholder, and — the
+ * whole point of `VoucherDocData` — NO MONEY ANYWHERE. `docs/VOUCHER
+ * GEB-2.docx` carries no price, total, balance or currency amount, and
+ * `VoucherDocData` structurally cannot carry one either (T13, B3); this
+ * function renders purely from that contract and invents nothing.
+ *
+ * HC-5 inheritance (mandatory, not re-litigated): built with the SAME `html`
+ * tagged template from `lib/html-escape.ts` used by `generateConfirmacionHTML`
+ * (T6b). Every interpolated value is escaped by default; `raw(` is never
+ * called in this function. The voucher is hotel/supplier-facing and carries
+ * staff-typed passenger names and free-text `observaciones` — the identical
+ * injection exposure CONFIRMACIÓN has, so it gets the identical treatment.
+ *
+ * `DIRECCIÓN`/`TELEFONO` now render `productos.direccion` /
+ * `suplidores.telefono` (the HOTEL's, via `VoucherDocData.direccionHotel` /
+ * `telefonoHotel`) — fixing the legacy bug where `DIRECCIÓN` printed the
+ * CLIENT's address and `TELÉFONO` printed the AGENCY's phone.
+ *
+ * CHECK IN/OUT are formatted with the exact same `fmtFecha`/`fmtHora` logic
+ * `generateConfirmacionHTML` uses, fed from the same underlying
+ * `reservas.hora_entrada`/`hora_salida` columns — so both documents render
+ * an identical date/time string for the same reserva (T14 AC-6).
+ *
+ * There is no separate "voucher number" field in `VoucherDocData` — the
+ * legacy badge's `VOUCHER # {reserva.numero}` was fed by
+ * `generateVoucherNumber()` (a date+`Math.random()` string, never persisted,
+ * deleted at T15). The one real, persisted identifier this contract carries
+ * is `localizador`, so the badge renders that instead of inventing a second
+ * number the contract does not have.
+ *
+ * LEGACY RETIRED (T15): `generateVoucherHTML(data: VoucherData)` and its
+ * `VoucherData` type — the last two callers of which were this file's own
+ * export and `app/facturacion/voucher/page.tsx` — have been deleted.
+ * `generateVoucherDocHTML` is now the sole voucher generator; the page calls
+ * only this export.
+ */
+export function generateVoucherDocHTML(data: VoucherDocData): string {
+  const MESES_ES = [
     "ENERO",
     "FEBRERO",
     "MARZO",
@@ -107,26 +112,44 @@ export function generateVoucherHTML(data: VoucherData): string {
     "NOVIEMBRE",
     "DICIEMBRE",
   ]
-  const parseDate = (v: string) => {
-    const d = new Date(v)
-    return isNaN(+d) ? new Date() : d
+
+  // "YYYY-MM-DD" (or any Date-parseable) -> "17-ABRIL-2025", identical to
+  // generateConfirmacionHTML's fmtFecha (T14 AC-6). checkInFecha/
+  // checkOutFecha are REQUIRED and already validated by buildVoucherData —
+  // no fallback here.
+  const fmtFecha = (iso: string): string => {
+    const d = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`)
+    return `${String(d.getDate()).padStart(2, "0")}-${MESES_ES[d.getMonth()]}-${d.getFullYear()}`
   }
-  const fmtDate = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${MONTHS_ES[d.getMonth()]}-${d.getFullYear()}`
-  const fmtMoney = (n: number) =>
-    new Intl.NumberFormat("es-DO", { style: "currency", currency: data.reserva.moneda || "USD" }).format(n)
 
-  // Dates
-  const checkIn = data.fechaEntrada ? parseDate(data.fechaEntrada) : parseDate(data.reserva.fecha)
-  const noches = data.noches && data.noches > 0 ? data.noches : 3 // <-- change if needed
-  const checkOut = data.fechaSalida ? parseDate(data.fechaSalida) : new Date(checkIn.getTime() + noches * 24 * 60 * 60 * 1000)
+  // "HH:MM"[:SS] 24h -> "03:00 PM" 12h, identical to generateConfirmacionHTML's
+  // fmtHora (T14 AC-6). checkInHora/checkOutHora are REQUIRED and already
+  // validated — never a hardcoded "03:00 PM"/"12:00 PM".
+  const fmtHora = (hora: string): string => {
+    const [hStr, mStr] = hora.split(":")
+    const h24 = Number.parseInt(hStr, 10)
+    const suffix = h24 >= 12 ? "PM" : "AM"
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+    return `${String(h12).padStart(2, "0")}:${mStr.padStart(2, "0")} ${suffix}`
+  }
 
-  return `
+  // "1) 2) 3)…" by orden — zero rows renders the section with no lines and
+  // no invented placeholder (never the legacy fake "1) {titular} / 2)
+  // Acompañante").
+  const pasajerosOrdenados = [...data.pasajeros].sort((a, b) => a.orden - b.orden)
+
+  // Room lines ordered by `orden`, shape pinned to docs/VOUCHER GEB-2.docx:
+  // "- X <cantidad> HABITACIONES OCUPACION <ocupacion> – Categoría: <categoria>"
+  // (the en-dash and the accented "Categoría" are the source's own).
+  const ocupacionesOrdenadas = [...data.ocupaciones].sort((a, b) => a.orden - b.orden)
+
+  return renderHtml(html`
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Voucher - ${data.reserva.numero}</title>
+  <title>Voucher - ${data.localizador}</title>
   <style>
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -175,95 +198,69 @@ export function generateVoucherHTML(data: VoucherData): string {
       <div class="page-num">Page 1 of 1</div>
       <div class="brand">
         <div class="logo-box">
-          <img src="/images/ellibry-logo.png" alt="${data.empresa.nombre}">
+          <img src="/images/ellibry-logo.png" alt="Ellibry">
         </div>
-        <div class="voucher-badge">VOUCHER # ${data.reserva.numero}</div>
+        <div class="voucher-badge">VOUCHER # ${data.localizador}</div>
       </div>
     </div>
 
-    <div class="titular"><b>TITULAR:</b> ${data.cliente.nombre.toUpperCase()}</div>
+    <div class="titular"><b>TITULAR:</b> ${data.titular.toUpperCase()} ${data.paxAdultos} Ad + ${data.paxNinos} Chd + ${data.paxInfantes} Inf</div>
 
     <div class="lugar">
       <div class="cell-left">LUGAR:</div>
-      <div class="cell-right">${data.reserva.servicio.toUpperCase()}</div>
+      <div class="cell-right">${data.lugar.toUpperCase()}</div>
     </div>
 
     <div class="details">
-      ${
-        data.destino
-          ? `<div class="row">
-        <div class="lbl">DESTINO:</div>
-        <div class="val">${data.destino}</div>
-      </div>`
-          : ""
-      }
       <div class="row">
         <div class="lbl">DIRECCIÓN:</div>
-        <div class="val">${data.cliente.direccion}</div>
+        <div class="val">${data.direccionHotel}</div>
       </div>
       <div class="row">
-        <div class="lbl">TELÉFONO:</div>
-        <div class="val">${data.empresa.telefono}</div>
+        <div class="lbl">TELEFONO:</div>
+        <div class="val">${data.telefonoHotel}</div>
       </div>
       <div class="row">
         <div class="lbl">SERVICIOS:</div>
         <div class="val">
-          - ALOJAMIENTO - ${data.regimen || "TODO INCLUIDO"}
+          - ALOJAMIENTO - ${data.regimen}
           <div class="services-list">
-            <div>- SERVICIO CONTRATADO: ${data.reserva.servicio}</div>
-            ${data.habitacion ? `<div>- HABITACIÓN: ${data.habitacion}</div>` : ""}
+            ${ocupacionesOrdenadas.map(
+              (grupo) =>
+                html`<div>- X ${grupo.cantidad} HABITACIONES OCUPACION ${grupo.ocupacion} – Categoría: ${grupo.categoria}</div>`,
+            )}
           </div>
         </div>
       </div>
       <div class="row">
         <div class="lbl">NOCHES:</div>
-        <div class="val">${noches}</div>
-      </div>
-      ${
-        data.adultos !== undefined || data.ninos !== undefined
-          ? `<div class="row">
-        <div class="lbl">OCUPACIÓN:</div>
-        <div class="val">${data.adultos ?? 0} Adultos, ${data.ninos ?? 0} Niños</div>
-      </div>`
-          : ""
-      }
-      <div class="row">
-        <div class="lbl">TOTAL:</div>
-        <div class="val">${fmtMoney(data.reserva.total)}</div>
+        <div class="val">${data.noches}</div>
       </div>
     </div>
 
-    <div class="localizador">LOCALIZADOR: ${localizador}</div>
+    <div class="localizador">LOCALIZADOR: ${data.localizador}</div>
 
     <div class="details">
       <div class="row">
         <div class="lbl">OBSERVACIONES</div>
-        <div class="val">${data.observaciones || ""}</div>
+        <div class="val">${data.observaciones}</div>
       </div>
       <div class="row">
         <div class="lbl">PASAJEROS</div>
         <div class="val">
-          ${
-            data.pasajeros && data.pasajeros.filter((p) => p && p.trim()).length > 0
-              ? data.pasajeros
-                  .filter((p) => p && p.trim())
-                  .map((p, i) => `<div>${i + 1}) ${p}</div>`)
-                  .join("")
-              : `<div>1) ${data.cliente.nombre}</div>
-          <div>2) Acompañante</div>`
-          }
+          ${pasajerosOrdenados.map((p, i) => html`<div>${i + 1}) ${p.nombreCompleto}</div>`)}
         </div>
       </div>
     </div>
 
     <div class="ribbon">
       <div class="ribbon-title">CHECK IN:</div>
-      <div>${fmtDate(checkIn)} 03:00 PM – Posible cargo adicional por llegada previa.</div>
+      <div>${fmtFecha(data.checkInFecha)} ${fmtHora(data.checkInHora)} – Posible cargo adicional por llegada previa.</div>
     </div>
 
     <div class="ribbon">
       <div class="ribbon-title">CHECK OUT:</div>
-      <div>${fmtDate(checkOut)} 12:00 PM – Posible cargo adicional por entregar tarde.</div>
+      <div>${fmtFecha(data.checkOutFecha)} ${fmtHora(data.checkOutHora)} – Posible cargo adicional por entregar tarde.</div>
     </div>
 
     <div class="disclaimer">
@@ -280,7 +277,7 @@ export function generateVoucherHTML(data: VoucherData): string {
   </div>
 </body>
 </html>
-`
+`)
 }
 
 export function generateProformaHTML(data: ProformaData): string {
@@ -1415,7 +1412,7 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
       <!-- Page 2: Confirmación Content -->
       <div class="page proforma-page">
         <div class="page-number">Page 1 of 2</div>
-        <div class="confirmation-badge">CONFIRMACIÓN DE SERVICIOS</div>
+        <div class="confirmation-badge">CONFIRMACION DE SERVICIOS</div>
         <div class="header-logo"></div>
 
         <div class="content-section">
@@ -1429,7 +1426,7 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
                 <span class="info-label">NOMBRE:</span> ${data.nombre}
               </div>
               <div class="info-line">
-                <span class="info-label">CÉDULA/RNC:</span> ${data.cedulaRnc}
+                <span class="info-label">CEDULA/RNC:</span> ${data.cedulaRnc}
               </div>
               <div class="info-line">
                 <span class="info-label">EMAIL:</span> ${data.email}
@@ -1493,8 +1490,7 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
                 (linea) => html`
                 <tr>
                   <td>
-                    ${linea.descripcion.toUpperCase()}<br>
-                    <small>TITULAR: ${data.nombre.toUpperCase()}</small>
+                    ${linea.descripcion.toUpperCase()}
                   </td>
                   <td>${fmtMonto(linea.precioUnitario)}</td>
                   <td>${fmtMonto(linea.descuento)}</td>
@@ -1522,10 +1518,10 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
               <span class="totals-label balance-pending">BALANCE RESERVA:</span><span class="totals-value balance-pending">${fmtMonto(data.balanceReserva)}</span>
             </div>
             <div class="totals-row">
-              <span class="totals-label balance-general">BALANCE GENERAL RD $</span><span class="totals-value balance-general">${fmtMonto(data.balanceGeneralDOP)}</span>
+              <span class="totals-label balance-general">BALANCE GENERAL EN RD $</span><span class="totals-value balance-general">${fmtMonto(data.balanceGeneralDOP)}</span>
             </div>
             <div class="totals-row">
-              <span class="totals-label balance-general">BALANCE GENERAL US $</span><span class="totals-value balance-general">${fmtMonto(data.balanceGeneralUSD)}</span>
+              <span class="totals-label balance-general">BALANCE GENERAL EN US $</span><span class="totals-value balance-general">${fmtMonto(data.balanceGeneralUSD)}</span>
             </div>
           </div>
 
@@ -1571,20 +1567,12 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
           <!-- Content is now overlaid on the background image -->
         </div>
 
-        <div class="office-visit">
-          <div class="office-title">También puede pasar por nuestra oficina, debe avisar antes de ir:</div>
-          <div class="office-address">
-            <strong>Dirección:</strong> Calle Juan Alejandro Ibarra #39, Piso 3, Local 305, Ensanche La Fe, Santo Domingo,<br>
-            Distrito Nacional, Rep. Dom.
-          </div>
-        </div>
-
         <div class="contact-footer">
           <div class="contact-logo"></div>
           <div>
-            <strong>Dirección:</strong> Calle Juan Alejandro Ibarra # 39, 3er Piso, Local 305, Ensanche La Fe, D.N. Sto. Dgo.<br>
-            <strong>Contactos:</strong> 809•992•3548 • 829•633•3548 • 829•769•6781 / <strong>Email:</strong> informacion@aventurasturisticasconellibry.com<br>
-            <strong>RNC:</strong> 132739622 / <strong>Instagram:</strong> @aventurasturisticasconellibry / <strong>Pag. Web:</strong> aventurasturisticasconellibry.com
+            <strong>Dirección:</strong> Avenida Jacobo Majluta, Plaza Toledo, Piso 1, Local 106, Arroyo Hondo, Distrito Nacional, Sto. Dgo.<br>
+            <strong>Contactos:</strong> 809•537•4070 • 849•252•2022 / 809•882•5675 / <strong>Email:</strong> servicio@grupoellibry.com<br>
+            <strong>RNC:</strong> 132739622 / <strong>Instagram:</strong> @grupoellibry / <strong>Pag. Web:</strong> grupoellibry.com
           </div>
         </div>
       </div>
