@@ -120,9 +120,10 @@ function validateOcupacionesInput(ocupaciones: OcupacionInput[]): string | null 
     if (
       typeof ocupacionGrupo.cantidad !== "number" ||
       !Number.isFinite(ocupacionGrupo.cantidad) ||
+      !Number.isInteger(ocupacionGrupo.cantidad) ||
       ocupacionGrupo.cantidad <= 0
     ) {
-      errores.push(`cantidad: ${etiqueta} debe ser mayor que 0`)
+      errores.push(`cantidad: ${etiqueta} debe ser un número entero mayor que 0 (no puede ser decimal)`)
     }
 
     if (typeof ocupacionGrupo.ocupacion !== "string" || ocupacionGrupo.ocupacion.trim().length === 0) {
@@ -1020,6 +1021,14 @@ export interface DatosVoucherReserva {
  */
 function validateDatosVoucherInput(input: DatosVoucherInput): string | null {
   const errores: string[] = []
+
+  for (const campo of ["localizador", "regimen"]) {
+    const valor = input[campo as keyof DatosVoucherInput]
+    if (valor === undefined || valor === null) continue
+    if (typeof valor !== "string") {
+      errores.push(`${campo}: debe ser un texto (string), no ${typeof valor}`)
+    }
+  }
 
   for (const campo of CAMPOS_PAX_VOUCHER) {
     const valor = input[campo]

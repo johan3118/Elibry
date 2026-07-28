@@ -1587,7 +1587,7 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
 }
 
 export function generateReciboHTML(data: ReciboData): string {
-  return `
+  return renderHtml(html`
     <!DOCTYPE html>
     <html lang="es">
     <head>
@@ -1792,7 +1792,7 @@ export function generateReciboHTML(data: ReciboData): string {
       </div>
     </body>
     </html>
-  `
+  `)
 }
 
 export function openDocumentInNewWindow(htmlContent: string, title = "Documento"): void {

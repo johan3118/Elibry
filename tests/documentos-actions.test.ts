@@ -433,9 +433,10 @@ describe("guardarOcupacionesReservaAction — block-never-default validation", (
 
     const result = await guardarOcupacionesReservaAction(42, ocupaciones, "user@test.com")
 
+    expect(mockFrom).not.toHaveBeenCalled()
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("cantidad")
-    expect(mockFrom).not.toHaveBeenCalled()
+    expect((result as any).error).not.toMatch(/is not a function|Cannot read properties/)
   })
 
   it("rejects a negative cantidad", async () => {
@@ -443,9 +444,10 @@ describe("guardarOcupacionesReservaAction — block-never-default validation", (
 
     const result = await guardarOcupacionesReservaAction(42, ocupaciones, "user@test.com")
 
+    expect(mockFrom).not.toHaveBeenCalled()
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("cantidad")
-    expect(mockFrom).not.toHaveBeenCalled()
+    expect((result as any).error).not.toMatch(/is not a function|Cannot read properties/)
   })
 
   it("rejects a blank ocupacion", async () => {
@@ -476,6 +478,17 @@ describe("guardarOcupacionesReservaAction — block-never-default validation", (
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("orden")
     expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("rejects a fractional cantidad (non-integer)", async () => {
+    const ocupaciones: OcupacionInput[] = [{ orden: 1, cantidad: 2.5, ocupacion: "DOBLE", categoria: "Suite" }]
+
+    const result = await guardarOcupacionesReservaAction(42, ocupaciones, "user@test.com")
+
+    expect(mockFrom).not.toHaveBeenCalled()
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("cantidad")
+    expect((result as any).error).not.toMatch(/is not a function|Cannot read properties/)
   })
 })
 
@@ -2038,6 +2051,26 @@ describe("guardarDatosVoucherReservaAction — block-never-default, applied lite
     const result = await guardarDatosVoucherReservaAction(6014, { localizador: "HTL-3" })
     expect(result.success).toBe(false)
     expect((result as any).error).toBe("boom")
+  })
+
+  it("rejects a non-string localizador (number) BEFORE touching the DB, with localizador named in the error, NOT the old opaque 'trim is not a function'", async () => {
+    const reservaId = 6016
+    const result = await guardarDatosVoucherReservaAction(reservaId, { localizador: 12345 as any })
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("localizador")
+    expect((result as any).error).not.toContain("is not a function")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("rejects a non-string regimen (object) BEFORE touching the DB, with regimen named in the error", async () => {
+    const reservaId = 6017
+    const result = await guardarDatosVoucherReservaAction(reservaId, { regimen: {} as any })
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("regimen")
+    expect((result as any).error).not.toContain("is not a function")
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 })
 
