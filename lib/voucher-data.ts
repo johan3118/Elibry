@@ -127,7 +127,16 @@ export interface BuildVoucherDataInput {
   lugar?: string | null
   /** `productos.direccion` (B2 wiring — reached via `productos.suplidor_id`, not a new column). */
   direccionHotel?: string | null
-  /** `suplidores.telefono` (B2 wiring). */
+  /**
+   * `productos.telefono_contacto` (scripts/033-add-contact-fields-to-
+   * productos.sql:2-4) — the HOTEL PROPERTY's own front-desk number, reached
+   * directly off the product row (no `suplidor_id` hop). HOTFIX (2026-07-27):
+   * this used to be wired to `suplidores.telefono`, a column that never
+   * existed in the schema (`suplidores` only has `telefono_responsable`,
+   * scripts/001-create-tables.sql:21 — the account manager's phone, a
+   * different person/number). PostgREST rejected every load with 42703,
+   * which was silently swallowed, blocking every voucher.
+   */
   telefonoHotel?: string | null
   /** `reservas.regimen` (T11). */
   regimen?: string | null
@@ -205,7 +214,7 @@ export function buildVoucherData(input: BuildVoucherDataInput): BuildVoucherData
   if (!esTextoValido(input.titular)) missing.push("TITULAR")
   if (!esTextoValido(input.lugar)) missing.push("LUGAR")
   if (!esTextoValido(input.direccionHotel)) missing.push("DIRECCIÓN (productos.direccion)")
-  if (!esTextoValido(input.telefonoHotel)) missing.push("TELEFONO (suplidores.telefono)")
+  if (!esTextoValido(input.telefonoHotel)) missing.push("TELEFONO (productos.telefono_contacto)")
   if (!esTextoValido(input.regimen)) missing.push("REGIMEN")
   if (!esTextoValido(input.localizador)) missing.push("LOCALIZADOR")
 

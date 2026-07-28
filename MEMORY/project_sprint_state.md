@@ -1,5 +1,5 @@
 # Elibry — Project Sprint State
-# as of 2026-07-27
+# as of 2026-07-28
 
 ---
 
@@ -134,6 +134,123 @@ or RLS broadly:** HC-1 (no authentication, no RLS on ~29 pre-existing tables —
 
 ---
 
+### 2026-07-28 — VOUCHER TELEFONO hotfix (round 2, lead-approved, uncommitted)
+
+**Trigger:** PRODUCTION OUTAGE. After the human applied `scripts/061`, `062`, `063` to the real
+database for the **first time ever**, no voucher could be generated at all.
+
+#### 1. What happened
+
+`app/facturacion/voucher/page.tsx` ran `.from("suplidores").select("id, telefono")`. There is no
+`telefono` column on `suplidores` — the real column is `telefono_responsable`
+(`scripts/001-create-tables.sql:21`). PostgREST returned HTTP 400 / Postgres `42703` on every page
+load; the error was swallowed into a bare `console.error` with no toast; `suplidores` stayed `[]`;
+`suplidorReal` was `null` for every reserva; `telefonoHotel` was `null`; `lib/voucher-data.ts`
+blocked every voucher with `"TELEFONO (suplidores.telefono)"`.
+
+#### 2. Root cause — the important part
+
+`lib/supabase.ts` contained a hand-written `interface Suplidor` declaring `telefono: string` — a
+field that does not exist in the database. The prior `geb-documents-real-data` sprint's plan
+verified the column **against that TypeScript interface instead of against the schema**
+(`docs/plans/geb-documents-real-data.md:53`, verbatim: *"`suplidores.telefono` exists
+(`lib/supabase.ts:136-150`). Confirms the spec's correction: no new columns for hotel
+address/phone."*). A type declaration was treated as evidence about the database. TypeScript could
+never catch it — PostgREST `.select()` strings are untyped. This shipped through a 16-task,
+fully-QA-gated sprint and only surfaced when a real database was finally connected. Recorded as
+instance 6 of `~/Developer/CBrain/mistakes/assertion-without-verification.md`.
+
+#### 3. The fix (human chose the source explicitly)
+
+TELEFONO repointed to `productos.telefono_contacto` (`scripts/032:3-4`, `scripts/033:2-4`) — the
+hotel property's own front-desk number — and the `suplidores` query **deleted entirely**.
+`direccionHotel` already comes from `productos.direccion`; the source doc
+`docs/VOUCHER GEB-2.docx` renders TELEFONO directly under the hotel's DIRECCIÓN.
+`suplidores.telefono_responsable` is the supplier account manager's phone — a different person,
+wrong for a document a guest presents at a hotel front desk. Also: stopped swallowing fatal load
+errors (clientes + productos now toast), and corrected the stale `Suplidor.telefono` →
+`telefono_responsable` in `lib/supabase.ts`.
+
+**Files changed** (all uncommitted, tree sits on `2f768c2` "wave 4"):
+`app/facturacion/voucher/page.tsx`, `lib/voucher-data.ts`, `lib/supabase.ts`,
+`tests/voucher-data.test.ts`, `tests/voucher-html.test.ts`, `tests/voucher-page.test.ts` (new).
+
+#### 4. Evidence
+
+`npm run qa` run twice, 25 files / 530 tests, `tsc` clean, exit 0. Test count 519 → 522 (round 1) →
+530 (round 2).
+
+- **Round 1 → RISKY → lead SEND-BACK.** QA finding: the fix was correct but the exact line that
+  caused the outage had **zero regression guard**. Three mutations all stayed 522/522 GREEN:
+  hardcoding `telefonoHotel` to `null`; swapping the wiring to `productoReal?.direccion` (a
+  realistic copy-paste from the line directly above); and — most importantly — dropping
+  `telefono_contacto` from the `productos` select string, **structurally the same bug class as the
+  outage itself, one layer over.** The dev's stated reason for not testing ("no React Testing
+  Library harness") was technically true but misleading: `tests/crm-casos-page.test.ts` is this
+  repo's established precedent for testing page-level logic with no RTL — it imports an exported
+  pure helper (`buildCierreOptimista`) out of `app/crm/casos/page.tsx` and unit-tests it in the
+  node environment.
+- **Round 2 → PASS.** Dev extracted `derivarTelefonoHotel` and `PRODUCTOS_SELECT_COLUMNS` as
+  exported values, added `tests/voucher-page.test.ts` (8 node-environment tests importing the real
+  functions). QA independently re-mutated and confirmed both now go RED at the correct assertions.
+  QA verified "no behavior change" across every input class including `productoId = 0` and
+  empty-string `telefono_contacto` (neither of which the dev's own suite covers).
+
+#### 5. Additional findings
+
+**A) Schema drift — `scripts/` does not describe the real database.** QA found
+`scripts/004-insert-real-data.sql:4` INSERTs into `suplidores` referencing `telefono`,
+`contacto_principal`, and `registrado_por` — columns no `CREATE`/`ALTER` statement anywhere in
+`scripts/` ever defines. Same shape as the already-known `comprobantes_fiscales` unknown (real
+shape exists only in production, created out of band). **Grepping `scripts/` is not sufficient
+evidence about production schema in this project.** Both a TypeScript interface and the migrations
+folder have now been proven unreliable as schema evidence — the only trustworthy source is
+`information_schema` against the live database. New mistake filed:
+`~/Developer/CBrain/mistakes/schema-source-of-truth.md`.
+
+**B) Dev's unverified "pre-existing" claim.** Dev reported a `react-hooks/exhaustive-deps` lint
+warning as "PRE-EXISTING." QA bisected — `git stash` to base commit `2f768c2`, ran eslint on the
+byte-identical base file, got 0 warnings/0 errors. The warning does **not** exist in the
+pre-hotfix codebase. Real cause: round-1's own `toast({...})` additions inside `fetchReservas`
+made the effect's deps unstable (exhaustive-deps does transitive closure; `fetchReservas`
+references `toast` from `useToast()`). Not a gate failure (0 errors, count flat at 30 across both
+runs, and the toast change was deliberate and lead-approved) — but it is
+assertion-without-verification's exact shape: a claim about system state asserted without running
+the baseline that would prove it.
+
+#### 6. Rollback path
+
+`git checkout -- app/facturacion/voucher/page.tsx lib/voucher-data.ts lib/supabase.ts
+tests/voucher-data.test.ts tests/voucher-html.test.ts && rm tests/voucher-page.test.ts`. Repo
+returns to `2f768c2` "wave 4"; no commit exists for this hotfix, so there is nothing else to
+unwind in the repo. **Note:** the `061`/`062`/`063` migrations themselves are already applied to
+the human's real database and are **not** reverted by this rollback — that is a separate,
+human-controlled DB operation, out of scope here.
+
+#### 7. Backlog carried forward
+
+- `lib/supabase.ts`'s `Suplidor` interface still missing `telefonos?: string[]` — two other files'
+  local interfaces declare it and `app/suplidores/editar/page.tsx:100` actively reads
+  `data.telefonos`.
+- `reservas`-load still silently swallows its error (`page.tsx:244-257`) — inconsistent with the
+  clientes/productos fix in the same function.
+- `lib/document-generator.tsx:77-80` stale doc comment still names `suplidores.telefono`.
+- `productoId = 0` has no test case.
+- Call-site wiring gap: nothing verifies `construirVoucherData` actually calls
+  `derivarTelefonoHotel`, nor that `.select()` actually uses `PRODUCTOS_SELECT_COLUMNS`. Only
+  closure path is exporting/parameterizing `construirVoucherData` — a scoped follow-up needing
+  explicit authorization.
+- One decorative assertion in `tests/voucher-page.test.ts`.
+- **Audit candidate, high value:** every other hand-written interface in `lib/supabase.ts` is
+  unverified against the real schema by the same reasoning that caused this outage. Recommend an
+  `information_schema`-vs-interfaces reconciliation once DB access is available.
+
+**Not fixed, explicitly out of scope:** HC-1 (no authentication, no RLS on ~29 pre-existing
+tables — ADR 0011) — unchanged by this hotfix. CONFIRMACIÓN's status still depends on R3
+(`comprobantes_fiscales` needing `reserva_id`/`numero_factura`) — still unverified.
+
+---
+
 ## Remaining backlog (highest priority first)
 
 _(see docs/plans/: feature-audit-sprint, module-audit-polish, crm-reservas-fixes,
@@ -142,4 +259,6 @@ Also see the geb-documents-real-data sprint entry above for B-1, B-9, B-13, B-14
 the unresolved HC-1 / R1 authentication-and-RLS exposure, and the
 recibo-escape-and-input-guards entry above for the current uncommitted-diff status,
 the two hard-blocked fiscal documents pending scripts/061+062, and the
-assertion-ordering fragility backlog item at tests/documentos-actions.test.ts:473-481.)_
+assertion-ordering fragility backlog item at tests/documentos-actions.test.ts:473-481.
+See the 2026-07-28 VOUCHER TELEFONO hotfix entry above for the schema-drift finding
+(scripts/ is not the schema) and the lib/supabase.ts interface-vs-schema audit candidate.)_

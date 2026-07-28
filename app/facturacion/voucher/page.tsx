@@ -50,9 +50,15 @@ import {
  *     getOcupacionesReservaAction / guardarOcupacionesReservaAction, whose
  *     success path also rebuilds passenger->room links (HC-4) — this page
  *     surfaces that outcome, never swallowing a `relinked: false`.
- *   - `DIRECCIÓN`/`TELÉFONO` come from the HOTEL (`productos.direccion` /
- *     `suplidores.telefono`), reached via the product's `suplidor_id` — no
- *     new columns, per the plan's F2/B2 wiring.
+ *   - `DIRECCIÓN`/`TELÉFONO` come from the HOTEL PROPERTY itself
+ *     (`productos.direccion` / `productos.telefono_contacto`) — the
+ *     front-desk number a guest calls, not the account manager's phone at
+ *     `suplidores.telefono_responsable`. HOTFIX (2026-07-27): a prior sprint
+ *     wired this to a `suplidores.telefono` column that never existed in the
+ *     schema (see scripts/001-create-tables.sql:21's `telefono_responsable`),
+ *     which PostgREST rejected with 42703 on every load, silently emptying
+ *     `suplidores` and blocking every voucher. `productos.telefono_contacto`
+ *     (scripts/033-add-contact-fields-to-productos.sql:2-4) replaces it.
  *
  * DELETED (fabrications this task removes, per §0/T15 AC-1/AC-3/AC-4/AC-5):
  *   - `generateVoucherNumber()` — a date+`Math.random()` string regenerated
@@ -103,11 +109,8 @@ interface Producto {
   pais?: string
   direccion?: string
   suplidor_id?: number
-}
-
-interface Suplidor {
-  id: number
-  telefono?: string
+  /** `productos.telefono_contacto` (scripts/033-add-contact-fields-to-productos.sql:2-4) — the hotel property's own front-desk number. */
+  telefono_contacto?: string
 }
 
 interface Reserva {
@@ -123,6 +126,41 @@ interface Reserva {
   precio_total: number
   status: string
   nota_interna_reserva?: string | null
+}
+
+/**
+ * The exact column list `fetchReservas` requests from `productos` —
+ * pulled into a named, exported constant (mirrors `buildCierreOptimista`'s
+ * export pattern in app/crm/casos/page.tsx) so `tests/voucher-page.test.ts`
+ * can assert on it directly. HOTFIX (2026-07-28): QA's mutation N2 proved
+ * that silently dropping `telefono_contacto` from this select string
+ * reproduces the SAME bug class as the original outage (PostgREST simply
+ * returns the row without it — no thrown error, `tsc` stays clean because
+ * select strings are untyped) one layer above the bug this hotfix already
+ * fixed. This constant is that regression guard's anchor.
+ */
+export const PRODUCTOS_SELECT_COLUMNS = "id, nombre_producto, pais, direccion, suplidor_id, telefono_contacto"
+
+/**
+ * Derives the VOUCHER's TELEFONO from `productos.telefono_contacto` — the
+ * hotel PROPERTY's own front-desk number (never `suplidores.telefono`,
+ * which never existed, and never the supplier account manager's phone).
+ * Extracted from `construirVoucherData`'s inline lookup (HOTFIX 2026-07-28,
+ * mirrors `buildCierreOptimista`'s export pattern) purely so this line gets
+ * a regression guard — NO BEHAVIOR CHANGE from the inline expression it
+ * replaces (`productoReal?.telefono_contacto ?? null`): a blank
+ * `telefono_contacto` string is passed through VERBATIM here (not
+ * normalized to `null`) exactly as it always was — `buildVoucherData`'s
+ * `esTextoValido` check downstream is what blocks a blank value; this
+ * function only decides WHICH COLUMN the value comes from.
+ */
+export function derivarTelefonoHotel(
+  productos: Producto[],
+  productoId: number | null | undefined,
+): string | null {
+  if (productoId === null || productoId === undefined) return null
+  const producto = productos.find((p) => p.id === productoId)
+  return producto?.telefono_contacto ?? null
 }
 
 /** One row in the repeatable occupancy-group editor — persists to `reserva_ocupaciones` (T2/T2b). */
@@ -168,7 +206,6 @@ export default function VoucherPage() {
   const [reservas, setReservas] = useState<Reserva[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
-  const [suplidores, setSuplidores] = useState<Suplidor[]>([])
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null)
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -227,28 +264,36 @@ export default function VoucherPage() {
 
       if (clientesError) {
         console.error("Error fetching clientes:", clientesError)
+        // HOTFIX (2026-07-27): a swallowed load error here used to surface,
+        // hours later, as an unexplainable "TITULAR" block on every
+        // voucher — never as its real cause. Surface it immediately instead.
+        toast({
+          title: "No se pudieron cargar los clientes",
+          description: clientesError.message,
+          variant: "destructive",
+        })
       } else {
         setClientes(clientesData || [])
       }
 
       const { data: productosData, error: productosError } = await supabase
         .from("productos")
-        .select("id, nombre_producto, pais, direccion, suplidor_id")
+        .select(PRODUCTOS_SELECT_COLUMNS)
 
       if (productosError) {
         console.error("Error fetching productos:", productosError)
+        // HOTFIX (2026-07-27): this is the exact bug this hotfix fixes — a
+        // swallowed error here (previously on a nonexistent
+        // `suplidores.telefono` column) presented as an unexplainable
+        // "DIRECCIÓN"/"TELEFONO" block on every voucher instead of naming
+        // the real, fixable cause. Never swallow this again.
+        toast({
+          title: "No se pudieron cargar los productos",
+          description: productosError.message,
+          variant: "destructive",
+        })
       } else {
         setProductos(productosData || [])
-      }
-
-      const { data: suplidoresData, error: suplidoresError } = await supabase
-        .from("suplidores")
-        .select("id, telefono")
-
-      if (suplidoresError) {
-        console.error("Error fetching suplidores:", suplidoresError)
-      } else {
-        setSuplidores(suplidoresData || [])
       }
     } catch (error) {
       console.error("Error in fetchReservas:", error)
@@ -604,7 +649,6 @@ export default function VoucherPage() {
     }
 
     const productoReal = productos.find((p) => p.id === reserva.producto_id)
-    const suplidorReal = productoReal?.suplidor_id ? suplidores.find((s) => s.id === productoReal.suplidor_id) : null
 
     // B3 provenance (Risk R13, T15 AC-10): a FRESH object literal, built
     // field-by-field from validated action results and this page's own
@@ -614,7 +658,12 @@ export default function VoucherPage() {
       titular: voucherDraft.titular,
       lugar: voucherDraft.lugar,
       direccionHotel: productoReal?.direccion ?? null,
-      telefonoHotel: suplidorReal?.telefono ?? null,
+      // HOTFIX (2026-07-27/28): the hotel PROPERTY's own front-desk number
+      // (`productos.telefono_contacto`), not the supplier account manager's
+      // phone. Extracted to the exported, regression-tested
+      // `derivarTelefonoHotel` (2026-07-28) — see the module doc above and
+      // lib/voucher-data.ts.
+      telefonoHotel: derivarTelefonoHotel(productos, reserva.producto_id),
       regimen: datosResultado.data.regimen,
       localizador: datosResultado.data.localizador,
       paxAdultos: datosResultado.data.pax_adultos,

@@ -241,7 +241,7 @@ describe("generateVoucherDocHTML — DIRECCIÓN/TELEFONO render the HOTEL's data
     expect(out).toContain("DIRECCIÓN:</div>\n        <div class=\"val\">Carr. El Macao - Arena Gorda, Punta Cana 23000</div>")
   })
 
-  it("TELEFONO renders telefonoHotel (suplidores.telefono)", () => {
+  it("TELEFONO renders telefonoHotel (productos.telefono_contacto)", () => {
     const out = generateVoucherDocHTML(CLEAN_FIXTURE)
     expect(out).toContain("TELEFONO:</div>\n        <div class=\"val\">(809) 552-1444</div>")
   })

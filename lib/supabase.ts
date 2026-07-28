@@ -139,7 +139,13 @@ export interface Suplidor {
   nombre_comercial: string
   tipo_documento: string
   numero_documento: string
-  telefono: string
+  // HOTFIX (2026-07-27): this field used to be named `telefono`, which does
+  // not exist as a column on `suplidores` — the real column is
+  // `telefono_responsable` (scripts/001-create-tables.sql:21). The stale
+  // `telefono: string` field on this hand-written interface is what let a
+  // prior sprint ship a `.select("telefono")` query PostgREST always
+  // rejected (42703) without TypeScript ever catching it.
+  telefono_responsable: string
   email: string
   direccion: string
   contacto_principal: string

@@ -168,7 +168,8 @@ describe("buildVoucherData — block-never-default, one test per branch", () => 
     { name: "titular missing", break_: (i) => { i.titular = undefined }, expectedMissing: "TITULAR" },
     { name: "lugar missing", break_: (i) => { i.lugar = undefined }, expectedMissing: "LUGAR" },
     { name: "direccionHotel missing (productos.direccion)", break_: (i) => { i.direccionHotel = undefined }, expectedMissing: "DIRECCIÓN (productos.direccion)" },
-    { name: "telefonoHotel missing (suplidores.telefono)", break_: (i) => { i.telefonoHotel = undefined }, expectedMissing: "TELEFONO (suplidores.telefono)" },
+    { name: "telefonoHotel missing (productos.telefono_contacto)", break_: (i) => { i.telefonoHotel = undefined }, expectedMissing: "TELEFONO (productos.telefono_contacto)" },
+    { name: "telefonoHotel blank string still blocks — never falls back to \"\", the supplier's phone, or the agency's phone", break_: (i) => { i.telefonoHotel = "   " }, expectedMissing: "TELEFONO (productos.telefono_contacto)" },
     { name: "regimen missing", break_: (i) => { i.regimen = undefined }, expectedMissing: "REGIMEN" },
     { name: "localizador missing — TYPE requires it, but the BUILDER blocks (AC-6)", break_: (i) => { i.localizador = undefined }, expectedMissing: "LOCALIZADOR" },
     { name: "localizador blank string blocks too, never persisted as an empty value", break_: (i) => { i.localizador = "   " }, expectedMissing: "LOCALIZADOR" },
@@ -262,7 +263,7 @@ describe("buildVoucherData — block-never-default, one test per branch", () => 
     expect(result.ok).toBe(false)
     if (result.ok) throw new Error("unreachable")
     expect(result.missing).toContain("TITULAR")
-    expect(result.missing).toContain("TELEFONO (suplidores.telefono)")
+    expect(result.missing).toContain("TELEFONO (productos.telefono_contacto)")
     expect(result.missing).toContain("PAX NINOS")
     expect(result.missing).toContain("OCUPACIONES (la reserva no tiene grupos de ocupación)")
     expect(result.missing.length).toBeGreaterThanOrEqual(4)
@@ -295,6 +296,43 @@ describe("buildVoucherData — block-never-default, one test per branch", () => 
     expect(result.ok).toBe(false)
     if (result.ok) throw new Error("unreachable")
     expect(result.missing).toContain("PASAJEROS (pasajero 2): nombreCompleto")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOTFIX (2026-07-27) regression coverage: TELEFONO must be sourced from
+// `productos.telefono_contacto` (the hotel PROPERTY's own front-desk number),
+// never `suplidores.telefono` (a column that never existed) and never a
+// fallback to "", the supplier's, or the agency's phone. End-to-end: a valid
+// `telefono_contacto`-shaped value flows verbatim from the builder into the
+// RENDERED voucher HTML; a missing one BLOCKS with the new, correctly-named
+// label instead of silently defaulting.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildVoucherData — TELEFONO sourced from productos.telefono_contacto (HOTFIX 2026-07-27)", () => {
+  it("a valid productos.telefono_contacto-shaped value flows verbatim through buildVoucherData AND into the rendered voucher HTML", async () => {
+    const { generateVoucherDocHTML } = await import("../lib/document-generator")
+
+    const input = clone(validInput())
+    input.telefonoHotel = "(809) 552-1444" // shape of a real productos.telefono_contacto value
+
+    const result = buildVoucherData(input)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("unreachable")
+    expect(result.data.telefonoHotel).toBe("(809) 552-1444")
+
+    const html = generateVoucherDocHTML(result.data)
+    expect(html).toContain("TELEFONO:</div>\n        <div class=\"val\">(809) 552-1444</div>")
+  })
+
+  it("a missing telefonoHotel BLOCKS with the productos.telefono_contacto label and NEVER reaches the renderer", () => {
+    const input = clone(validInput())
+    input.telefonoHotel = undefined
+    const result = buildVoucherData(input)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.missing).toContain("TELEFONO (productos.telefono_contacto)")
+    expect(result.missing).not.toContain("TELEFONO (suplidores.telefono)")
   })
 })
 
