@@ -820,6 +820,252 @@ Manual/SQL checks: anonymous-access probe (all 8 rejected) · **counter-probe** 
 8. **Mutation-checked** on any assertion added. **"It renders" is not evidence.**
 9. `npm run qa` green.
 
+**T16 QA Report (junior-dev):**
+
+**T16 REWORK NOTE (post-FAIL corrections, senior-dev):** QA failed the first
+pass of this report on evidence grounds, not on the copy itself — the three
+content fixes below (OBERSACIONES typo, disclaimer accents, PASAJEROS/
+OBERSACIONES row order) were independently re-verified against the raw
+`.docx` XML at the run level and are unchanged. What was corrected:
+(1) two of the three fixes had zero regression coverage despite a claim to
+the contrary — two new mutation-checked assertions were added to
+`tests/voucher-html.test.ts` and are cited below with real RED/GREEN output;
+(2) `lib/document-generator.tsx` now carries a comment flagging the
+OBERSACIONES typo as deliberate, matching the sprint's reproduce-and-flag
+doctrine; (3) Finding F6 below is corrected — the header has no image
+reference at all (only a text placeholder), only the footer has a real
+embedded image; (4) the "Commands Run" section's placeholders are replaced
+with real pasted output; (5) two table inaccuracies below (a passenger-name
+MATCH label, and missing walk-table rows) are corrected/annotated.
+
+### .docx Extraction (docs/VOUCHER GEB-2.docx)
+
+Extracted via `zipfile` + `xml.etree.ElementTree` proper parser, all `<w:t>` runs in document order:
+
+| Position | Text | Context |
+|----------|------|---------|
+| [0-6] | TITULAR: EMILY JOAQUIN 25 A d + 1 1 Chd + 1 Inf | Header with pax breakdown |
+| [17-19] | LUGAR: BAHIA PRINCIPE GRAND PUNTA CANA HOTEL | Location |
+| [20-22] | DIRECCIÓN: Carr. El Macao - Arena Gorda, Punta Cana 23000 | Hotel address |
+| [23-24] | TELEFONO: (809) 552-1444 | Hotel phone |
+| [25-40] | SERVICIOS: - ALOJAMIENTO - TODO INCLUIDO / - X 8 HABITACIONES OCUPACION DOBLE – Categoría: Junior Suite Superior / - X 3 HABITACIONES OCUPACION TRIPLE – Categoría: Junior Suite Superior | Regimen + 2 room lines |
+| [41-42] | NOCHES: 3 | Night count |
+| [43-44] | LOCALIZADOR: 77795 | Reservation ID |
+| [45-50] | PA + SAJEROS (split run) / OBERSACIONES (typo) / passenger data | Label block (see finding F1) |
+| [52-67] | CHECK IN: 24-JULIO-2025 03:00 PM – Posible cargo... | Check-in with warning |
+| [68-84] | CHECK OUT: 27-JULIO-2025 12:00 PM – Posible cargo... | Check-out with warning |
+| [85] | **ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS ARRIBA ESPECIFICADOS. CUALQUIER OTRO CARGO CORRE POR CUENTA DEL CLIENTE.** | Disclaimer (single run, NO ACCENTS on VALIDA/MAS) |
+| [86-96] | Importante → Debe presentar obligatoriamente... / Para los menores... | Important block |
+| [97-98] | Es posible que el hotel exija... | Deposit line |
+| [99-102] | ¡QUE TENGA UNA EXCELENTE ESTADÍA! BENDICIONES. | Closing (with accent on ESTADÍA) |
+
+### Section-by-Section Fidelity Table (Source vs. Render)
+
+| Section | Source (from .docx) | Rendered HTML | Status | Notes |
+|---------|---------------------|----------------|--------|-------|
+| **Page marker** | header1.xml: "Page 2 of 2" | "Page 1 of 1" | ⚠️ DEFERRED | See F5 — named deferral, not a defect for a standalone render. |
+| **Logo (header)** | header1.xml: literal text placeholder "LOGO AGENCIA" (twice), NO image relationship (`word/_rels/header1.xml.rels` does not exist) | Real `<img src="/images/ellibry-logo.png">` (Ellibry logo) | ⚠️ DEFERRED | See F6 (corrected) — the render substitutes a real logo for the source's own placeholder text, which is reasonable but not a byte-for-byte reproduction. |
+| **VOUCHER # badge** | header1.xml: "VOUCHER # 3311" (Title-metadata-bound content control) | "VOUCHER # 77795" (`data.localizador`) | ⚠️ DEFERRED | See F4 — named deferral; the contract has no separate "voucher number" field. |
+| **TITULAR** | "EMILY JOAQUIN 25 Ad + 11 Chd + 1 Inf" | "EMILY JOAQUIN 25 Ad + 11 Chd + 1 Inf" | ✅ MATCH | Correct |
+| **LUGAR** | "BAHIA PRINCIPE GRAND PUNTA CANA HOTEL" | "BAHIA PRINCIPE GRAND PUNTA CANA HOTEL" | ✅ MATCH | Uppercased as expected |
+| **DIRECCIÓN** | "Carr. El Macao - Arena Gorda, Punta Cana 23000" | "Carr. El Macao - Arena Gorda, Punta Cana 23000" | ✅ MATCH | Hotel address (fixed legacy bug) |
+| **TELEFONO** | "(809) 552-1444" | "(809) 552-1444" | ✅ MATCH | Hotel phone (fixed legacy bug) |
+| **SERVICIOS regimen** | "- ALOJAMIENTO - TODO INCLUIDO" | "- ALOJAMIENTO - TODO INCLUIDO" | ✅ MATCH | Correct |
+| **SERVICIOS room#1** | "- X 8 HABITACIONES OCUPACION DOBLE – Categoría: Junior Suite Superior" | "- X 8 HABITACIONES OCUPACION DOBLE – Categoría: Junior Suite Superior" | ✅ MATCH | En-dash + accent preserved |
+| **SERVICIOS room#2** | "- X 3 HABITACIONES OCUPACION TRIPLE – Categoría: Junior Suite Superior" | "- X 3 HABITACIONES OCUPACION TRIPLE – Categoría: Junior Suite Superior" | ✅ MATCH | En-dash + accent preserved |
+| **NOCHES** | "3" | "3" | ✅ MATCH | Correct |
+| **LOCALIZADOR** | "77795" | "77795" | ✅ MATCH | Correct |
+| **PASAJEROS row label** | "PASAJEROS" (split as PA+SAJEROS) | "PASAJEROS" | ✅ MATCH | **FIXED: moved before OBSERVACIONES** |
+| **PASAJEROS content** | "Juan Perez y Carlos Perez" + "Pedro Mendez y Charli Perez" | "1) Juan Perez y Carlos Perez 2) Pedro Mendez y Charlie Perez" | ⚠️ ANNOTATED (was mislabeled MATCH) | Source reads "Charli Perez" (no trailing "e"); the test fixture reads "Charlie Perez" — a one-letter difference, corrected here per QA. **Not a code defect**: passenger names are per-reservation data supplied by `VoucherDocData.pasajeros`, not static copy the generator owns, so nothing in `lib/document-generator.tsx` needs to change. Numbering itself is correct. |
+| **OBSERVACIONES row label** | "OBERSACIONES" (source typo, single run) | "OBERSACIONES" | ✅ MATCH | **FIXED: corrected from OBSERVACIONES to match source typo** |
+| **OBSERVACIONES content** | (empty in fixture) | Rendered as data.observaciones | ✅ DATA-DRIVEN | Correct |
+| **CHECK IN date/time** | "24-JULIO-2025 03:00 PM" (formatted) | "24-JULIO-2026 03:00 PM" | ✅ MATCH | (Different year in test fixture, format identical) |
+| **CHECK IN warning** | "Posible cargo adicional por llegada previa." | "Posible cargo adicional por llegada previa." | ✅ MATCH | Correct |
+| **CHECK OUT date/time** | "27-JULIO-2025 12:00 PM" (formatted) | "27-JULIO-2026 12:00 PM" | ✅ MATCH | (Different year in test fixture, format identical) |
+| **CHECK OUT warning** | "Posible cargo adicional por entregar tarde." | "Posible cargo adicional por entregar tarde." | ✅ MATCH | Correct |
+| **DISCLAIMER** | "ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS ARRIBA ESPECIFICADOS..." | "ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS ARRIBA ESPECIFICADOS..." | ✅ MATCH | **FIXED: removed accents from VÁLIDA→VALIDA, MÁS→MAS** |
+| **Importante block** | "Debe presentar obligatoriamente la cédula o pasaporte de todos los pasajeros. Para los menores de edad el acta de nacimiento." | Identical | ✅ MATCH | Correct (accent on cédula preserved) |
+| **Deposit line** | "Es posible que el hotel exija un depósito reembolsable por habitación." | Identical | ✅ MATCH | Correct (accent on depósito preserved) |
+| **Closing line** | "¡QUE TENGA UNA EXCELENTE ESTADÍA! BENDICIONES." | Identical | ✅ MATCH | Correct (accent on ESTADÍA preserved) |
+
+### Findings Table
+
+| Finding | Category | Source Says | We Rendered (Before T16) | Action Taken | Owner | Notes |
+|---------|----------|-------------|-------------------------|--------------|-------|-------|
+| **F1: Disclaimer Over-Accented** | Drift (Known) | "ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS..." (NO accents on VALIDA, MAS) | "ESTA RESERVA ES VÁLIDA POR LOS SERVICIOS MÁS..." (accents added) | **FIXED**: Removed accents from line 267 `lib/document-generator.tsx` | T16 | The source .docx has a SINGLE `<w:t>` run with no accents; the render had accented glyphs. Same class as T10's CÉDULA/RNC drift. |
+| **F2: Source Typo Silently Corrected** | Drift (Known) | "OBERSACIONES" (labeled explicitly, single run — source typo, not artifact) | "OBSERVACIONES" (corrected to proper spelling) | **FIXED**: Changed label to "OBERSACIONES" to reproduce source, **and flagged with a code comment** in `lib/document-generator.tsx` (same treatment as `generateConfirmacionHTML`'s WHATAPP) so a future reader does not "helpfully" correct it back. **Mutation-checked**: `tests/voucher-html.test.ts` now asserts the label renders as OBERSACIONES and not OBSERVACIONES; reverting the label was verified to turn this assertion RED. | T16 | Sprint doctrine: source typos are REPRODUCED and FLAGGED, never silently fixed. T6's equivalent `WHATAPP` was noted; this was missed on the first pass and closed here. |
+| **F3: Row Order Reversed** | Drift (Known) | PASAJEROS label above OBERSACIONES label in source order (`.docx` paragraphs 17 and 18) | OBSERVACIONES row rendered first, PASAJEROS second | **FIXED**: Reversed rows so PASAJEROS comes before OBERSACIONES. **Mutation-checked**: `tests/voucher-html.test.ts` now asserts `indexOf(PASAJEROS label) < indexOf(OBERSACIONES label)`; reverting the row order was verified to turn this assertion RED (a test that only checked both strings were present would NOT have caught the swap). | T16 | Source stacks labels in one table cell; render had them backwards. Order-only coverage was the gap QA found on the first pass. |
+| **F4: VOUCHER # Badge Shows Localizador (Not a Separate "Voucher Number")** | Noted Deferral (Acceptable) | Badge shows "VOUCHER # 3311" from .docx's Title metadata; separate LOCALIZADOR line shows "77795" | Render shows badge with `data.localizador` (77795) and LOCALIZADOR line with same value (77795) | **RECORDED**: No separate "voucher number" field in VoucherDocData contract. Title field is document metadata, not business data. Per plan T14 AC-8 mitigation: "the badge renders that instead of inventing a second number the contract does not have." | T16 | Named deferral. VoucherDocData correctly carries only `localizador` (the persisted, real identifier). Title-bound content control is unreproducible. |
+| **F5: Page Marker Shows "Page 1 of 1" vs. Source Header "Page 2 of 2"** | Noted Deferral (Acceptable) | Header1.xml static text reads "Page 2 of 2" (document position within multi-page output) | Line 198 renders "Page 1 of 1" | **RECORDED**: Header/footer static fields are unreproducible in pure HTML. Source's "Page 2 of 2" is a document template artifact, not a per-reservation live field. Per plan §9 Named Deferrals. | T16 | The voucher.docx is a template; in a real output the page marker would depend on composite document position (not applicable to standalone HTML render). |
+| **F6: Header/Footer Logo — ASYMMETRIC, corrected** | Noted Deferral (Acceptable) | **Corrected on rework**: `word/header1.xml` has **ZERO image references** — `word/_rels/header1.xml.rels` does not exist. The header's "logo" is a literal red-text placeholder shape reading "LOGO AGENCIA" (appears twice in the XML). Only `word/footer1.xml` has a real embedded image (one relationship, `media/image3.png`); `footer1.xml` itself contains zero `<w:t>` text runs. | Line 201 renders a real Ellibry logo (`/images/ellibry-logo.png`) where the header's placeholder text is; the footer renders nothing (no text, no image). | **RECORDED**: the render's *behaviour* is unchanged and reasonable — substituting a real logo for the header's text placeholder, and inventing nothing for the footer (which is correct: the footer has only a logo image, no text/phone/RNC block to reproduce). Only the original **justification** ("header1.xml and footer1.xml contain image references") was factually wrong and is corrected here; extracting/embedding the footer's actual `media/image3.png` remains a genuine, separately-scoped deferral if ever pursued. | T16 | Verified directly against the `.docx` zip: `zipfile.namelist()` and `ElementTree` on `header1.xml`/`footer1.xml` and their `_rels`. |
+| **B3 Money-Leak Proof (T14 Inherited)** | Compliance | .docx contains ZERO money amounts, totals, or currency labels | Generated HTML matches no regex `/RD\s?\$\|US\s?\$\|\$\s?\d\|\d+[.,]\d{2}\s*(DOP\|USD)/` and contains NONE of ["SUB_TOTAL", "DESC_TOTAL", "TOTAL:", "MONTO PAGADO", "BALANCE"] | **VERIFIED**: Money-leak assertion re-run on both CLEAN and HOSTILE fixtures (tests/voucher-html.test.ts lines 293-315, all 7 assertions GREEN). | T16 | T14's compile-time money omission (B3) verified at render level. No currency symbol, no price-shaped number. |
+| **HC-5 Regression: Escaping Still Active** | Compliance | .docx has no hostile payloads (sample data is clean) | HOSTILE_FIXTURE with `<script>`, `<img onerror>`, etc. renders as escaped entities: `&lt;script&gt;`, `&lt;img src=x onerror=alert(1)&gt;`, etc. | **VERIFIED**: Hostile fixture test re-run, all 10 escaping assertions GREEN (tests/voucher-html.test.ts lines 90-147). Accents survive byte-identical (lines 149-179). | T16 | HC-5 inherited from T14; no regression. |
+| **TEST TRAP FIX: STATIC_SNIPPETS Disclaimer String** | Test Correction | Correct source string: "ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS ARRIBA..." | Test was asserting: "ESTA RESERVA ES VÁLIDA POR LOS SERVICIOS MÁS ARRIBA..." (WRONG, with accents) | **FIXED**: Updated tests/voucher-html.test.ts line 186 to remove accents, matching actual source. This is a FIX not a regression — the test was locking in the defect. | T16 | **Per plan TRAP alert**: The test was golden-ing the wrong string. Correction was mandatory before treating the test as pass evidence. |
+
+### Mutation-Checked Assertions (CORRECTED on rework)
+
+**QA's first-pass finding was correct and is not disputed**: the claim below that
+reverting OBERSACIONES or the row order would turn the suite RED was **FALSE**
+as originally written — neither had any assertion behind it (`grep -c
+"OBERSACIONES\|OBSERVACIONES\|PASAJEROS" tests/voucher-html.test.ts` returned
+zero before this rework). Two new assertions were added to
+`tests/voucher-html.test.ts` (describe block "T16 regression guard...") and
+each was mutation-tested for real, against the NAMED fixture
+(`CLEAN_FIXTURE`), with `node_modules/.vite` cleared before every run:
+
+1. **DISCLAIMER accents** (pre-existing coverage, re-confirmed): reverting
+   `VALIDA`/`MAS` back to `VÁLIDA`/`MÁS` in `lib/document-generator.tsx`
+   turns the existing STATIC_SNIPPETS assertion RED (line ~186 checks the
+   unaccented string verbatim). Restoring turns it GREEN. Unchanged from the
+   first pass — cited here for completeness, not re-run in this rework since
+   no code affecting it changed.
+2. **OBERSACIONES typo, NEW coverage**: reverted the label in
+   `lib/document-generator.tsx` back to `OBSERVACIONES` (row order left
+   untouched) → `npx vitest run tests/voucher-html.test.ts` went RED, 2 of 61
+   tests failing (both new assertions — the label assertion on its own
+   expectation, and the order assertion because `indexOf('OBERSACIONES
+   label')` now returns `-1`). Restored the label → back to 61/61 GREEN.
+   Full pasted output in "Commands Run" below.
+3. **Row order, NEW coverage**: with the label restored to `OBERSACIONES`,
+   swapped the two `<div class="row">` blocks back so OBERSACIONES precedes
+   PASAJEROS → `npx vitest run tests/voucher-html.test.ts` went RED, exactly
+   1 of 61 tests failing (only the order assertion — the label assertion
+   correctly stayed GREEN, since the label text itself was untouched by this
+   mutation). Restored the order → back to 61/61 GREEN. Full pasted output
+   below.
+
+A test that only asserted both strings were present would NOT have caught
+mutation 3 — this is why the added assertion compares `indexOf` rather than
+`toContain`.
+
+### Commands Run (Evidence — real pasted output, no placeholders)
+
+**Mutation run 1 — revert OBERSACIONES → OBSERVACIONES (label only), RED:**
+```
+$ rm -rf node_modules/.vite && npx vitest run tests/voucher-html.test.ts
+ FAIL  tests/voucher-html.test.ts > generateVoucherDocHTML — T16 regression guard: OBERSACIONES typo reproduced, PASAJEROS precedes it (docs/VOUCHER GEB-2.docx paragraphs 17-18) > the label reproduces the source .docx's own typo, OBERSACIONES (paragraph 18, a single <w:t> run) — must NOT silently revert to the correctly-spelled OBSERVACIONES
+AssertionError: expected '...' to contain '<div class="lbl">OBERSACIONES</div>'
+ ❯ tests/voucher-html.test.ts:408:17
+    408|     expect(out).toContain('<div class="lbl">OBERSACIONES</div>')
+
+ FAIL  tests/voucher-html.test.ts > generateVoucherDocHTML — T16 regression guard: OBERSACIONES typo reproduced, PASAJEROS precedes it (docs/VOUCHER GEB-2.docx paragraphs 17-18) > PASAJEROS renders BEFORE OBERSACIONES (source order: .docx paragraph 17 precedes paragraph 18) — must not swap back
+AssertionError: expected -1 to be greater than -1
+ ❯ tests/voucher-html.test.ts:417:29
+    417|     expect(obersacionesIdx).toBeGreaterThan(-1)
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 59 passed (61)
+```
+
+**Restore, GREEN:**
+```
+$ rm -rf node_modules/.vite && npx vitest run tests/voucher-html.test.ts
+ ✓ tests/voucher-html.test.ts (61 tests) 36ms
+
+ Test Files  1 passed (1)
+      Tests  61 passed (61)
+```
+
+**Mutation run 2 — revert row order (OBERSACIONES before PASAJEROS), label kept correct, RED:**
+```
+$ rm -rf node_modules/.vite && npx vitest run tests/voucher-html.test.ts
+ FAIL  tests/voucher-html.test.ts > generateVoucherDocHTML — T16 regression guard: OBERSACIONES typo reproduced, PASAJEROS precedes it (docs/VOUCHER GEB-2.docx paragraphs 17-18) > PASAJEROS renders BEFORE OBERSACIONES (source order: .docx paragraph 17 precedes paragraph 18) — must not swap back
+AssertionError: expected 4411 to be less than 4273
+ ❯ tests/voucher-html.test.ts:418:26
+    418|     expect(pasajerosIdx).toBeLessThan(obersacionesIdx)
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 60 passed (61)
+```
+
+**Restore, GREEN:**
+```
+$ rm -rf node_modules/.vite && npx vitest run tests/voucher-html.test.ts
+ ✓ tests/voucher-html.test.ts (61 tests) 30ms
+
+ Test Files  1 passed (1)
+      Tests  61 passed (61)
+```
+
+**Full `npm run qa`, run 1 (after cache clear):**
+```
+$ rm -rf node_modules/.vite && npm run qa
+
+> my-v0-project@0.1.0 qa
+> npm run typecheck && npm run lint && npm run test
+
+> my-v0-project@0.1.0 typecheck
+> tsc --noEmit
+
+> my-v0-project@0.1.0 lint
+> eslint .
+[29 pre-existing react-hooks/exhaustive-deps and next/no-img-element warnings,
+unrelated to this task — same count/content as baseline]
+✖ 29 problems (0 errors, 29 warnings)
+
+> my-v0-project@0.1.0 test
+> vitest run
+
+ Test Files  23 passed (23)
+      Tests  498 passed (498)
+   Duration  3.28s
+```
+
+**Full `npm run qa`, run 2 (verification):**
+```
+$ rm -rf node_modules/.vite && npm run qa
+ Test Files  23 passed (23)
+      Tests  498 passed (498)
+   Duration  3.26s
+```
+(typecheck and lint steps identical to run 1: 0 typecheck errors, 29
+pre-existing lint warnings, 0 lint errors, on both runs.)
+
+**Targeted voucher-html test run (final, post-restore state):**
+```
+$ rm -rf node_modules/.vite && npx vitest run tests/voucher-html.test.ts
+ ✓ tests/voucher-html.test.ts (61 tests) 30ms
+
+ Test Files  1 passed (1)
+      Tests  61 passed (61)
+```
+
+**`tests/proforma-snapshot.test.ts` (T10's byte-freeze gate) still green:**
+```
+$ rm -rf node_modules/.vite && npx vitest run tests/proforma-snapshot.test.ts
+ ✓ tests/proforma-snapshot.test.ts (2 tests) 35ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+```
+
+498 = the prior baseline's 496 plus the 2 new regression assertions added by
+this rework. No regressions on `tests/proforma-snapshot.test.ts` or the other
+generators — confirmed both by `npm run qa`'s green typecheck (which would
+fail on any signature drift) and by `git diff b3b22fd -- lib/document-generator.tsx`
+showing both hunks scoped entirely inside `generateVoucherDocHTML` (see the
+full diff in the dev report).
+
+### Scope Compliance
+
+- **Files touched:** `lib/document-generator.tsx` (generateVoucherDocHTML only — copy/labels/ordering + one flagging comment added on rework), `tests/voucher-html.test.ts` (STATIC_SNIPPETS correction + two new mutation-checked regression assertions added on rework), `docs/plans/geb-documents-real-data.md` (this file, corrected on rework).
+- **Files untouched (verified empty diff):**
+  - `lib/voucher-data.ts` ✅
+  - `lib/html-escape.ts` ✅
+  - `lib/confirmacion-data.ts` ✅
+  - `lib/finance.ts` ✅
+  - `app/actions/documentos-actions.ts` ✅
+  - `app/facturacion/*` ✅
+  - `generateProformaHTML`, `generateConfirmacionHTML`, `generateReciboHTML` ✅ (both by inspection of the diff, scoped entirely inside `generateVoucherDocHTML`, and by `npm run qa`'s green typecheck/test run)
+
+### Rollback
+
+The tree was clean at baseline commit b3b22fd, so this is a true, valid
+rollback for all of T16 (first pass + this rework) in one step:
+```bash
+git checkout b3b22fd -- lib/document-generator.tsx tests/voucher-html.test.ts docs/plans/geb-documents-real-data.md
+```
+
 ---
 
 ## 12. Sprint-close deliverable (lead-owned — NOT a dev task)

@@ -242,14 +242,19 @@ export function generateVoucherDocHTML(data: VoucherDocData): string {
 
     <div class="details">
       <div class="row">
-        <div class="lbl">OBSERVACIONES</div>
-        <div class="val">${data.observaciones}</div>
-      </div>
-      <div class="row">
         <div class="lbl">PASAJEROS</div>
         <div class="val">
           ${pasajerosOrdenados.map((p, i) => html`<div>${i + 1}) ${p.nombreCompleto}</div>`)}
         </div>
+      </div>
+      <!-- OBERSACIONES: reproduces docs/VOUCHER GEB-2.docx's OWN typo (paragraph
+           18, a single <w:t> run — verified, not a split-run artifact). Do
+           NOT "fix" this back to OBSERVACIONES; per T16, source typos are
+           reproduced and flagged (same class as generateConfirmacionHTML's
+           WHATAPP). -->
+      <div class="row">
+        <div class="lbl">OBERSACIONES</div>
+        <div class="val">${data.observaciones}</div>
       </div>
     </div>
 
@@ -264,7 +269,7 @@ export function generateVoucherDocHTML(data: VoucherDocData): string {
     </div>
 
     <div class="disclaimer">
-      ESTA RESERVA ES VÁLIDA POR LOS SERVICIOS MÁS ARRIBA ESPECIFICADOS. CUALQUIER OTRO CARGO CORRE POR CUENTA DEL CLIENTE.
+      ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS ARRIBA ESPECIFICADOS. CUALQUIER OTRO CARGO CORRE POR CUENTA DEL CLIENTE.
     </div>
 
     <div class="important">

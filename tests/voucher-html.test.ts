@@ -183,7 +183,7 @@ describe("generateVoucherDocHTML — static Spanish boilerplate is byte-identica
   const hostileOut = generateVoucherDocHTML(HOSTILE_FIXTURE)
 
   const STATIC_SNIPPETS = [
-    "ESTA RESERVA ES VÁLIDA POR LOS SERVICIOS MÁS ARRIBA ESPECIFICADOS. CUALQUIER OTRO CARGO CORRE POR CUENTA DEL CLIENTE.",
+    "ESTA RESERVA ES VALIDA POR LOS SERVICIOS MAS ARRIBA ESPECIFICADOS. CUALQUIER OTRO CARGO CORRE POR CUENTA DEL CLIENTE.",
     "Debe presentar obligatoriamente la cédula o pasaporte de todos los pasajeros.",
     "Para los menores de edad el acta de nacimiento.",
     "Es posible que el hotel exija un depósito reembolsable por habitación.",
@@ -395,6 +395,27 @@ describe("generateVoucherDocHTML — CHECK IN/OUT render from the SAME columns C
     expect(voucherOut).toContain("09:15 AM")
     expect(confirmacionOut).toContain("09:15 AM")
     expect(voucherOut).not.toContain("03:00 PM – Posible cargo adicional por llegada previa")
+  })
+})
+
+describe("generateVoucherDocHTML — T16 regression guard: OBERSACIONES typo reproduced, PASAJEROS precedes it (docs/VOUCHER GEB-2.docx paragraphs 17-18)", () => {
+  // These two assertions are the missing coverage QA flagged on T16's first
+  // pass: the plan claimed reverting either fix would turn the suite RED,
+  // but neither was actually asserted. Both are mutation-checked (see the
+  // dev report) against this exact rendered string.
+  it("the label reproduces the source .docx's own typo, OBERSACIONES (paragraph 18, a single <w:t> run) — must NOT silently revert to the correctly-spelled OBSERVACIONES", () => {
+    const out = generateVoucherDocHTML(CLEAN_FIXTURE)
+    expect(out).toContain('<div class="lbl">OBERSACIONES</div>')
+    expect(out).not.toContain('<div class="lbl">OBSERVACIONES</div>')
+  })
+
+  it("PASAJEROS renders BEFORE OBERSACIONES (source order: .docx paragraph 17 precedes paragraph 18) — must not swap back", () => {
+    const out = generateVoucherDocHTML(CLEAN_FIXTURE)
+    const pasajerosIdx = out.indexOf('<div class="lbl">PASAJEROS</div>')
+    const obersacionesIdx = out.indexOf('<div class="lbl">OBERSACIONES</div>')
+    expect(pasajerosIdx).toBeGreaterThan(-1)
+    expect(obersacionesIdx).toBeGreaterThan(-1)
+    expect(pasajerosIdx).toBeLessThan(obersacionesIdx)
   })
 })
 
