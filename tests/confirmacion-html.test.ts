@@ -818,6 +818,61 @@ describe("generateConfirmacionHTML — no-op on clean data (AC-7)", () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HC-2 REVISED (CONFIRMACIÓN — make FACTURA # OPTIONAL): `facturaNumero` is
+// now `string | null`. These tests are the rendered-HTML-level acceptance
+// criteria (AC-1/AC-2/AC-5) for that reversal — assertions are on the
+// RENDERED HTML STRING, matching this file's own stated convention (see the
+// file header).
+describe("generateConfirmacionHTML — HC-2 REVISED: FACTURA # optional (AC-1/AC-2/AC-5)", () => {
+  const NO_FACTURA_FIXTURE: ConfirmacionData = { ...CLEAN_FIXTURE, facturaNumero: null }
+
+  it("AC-1: renders successfully with facturaNumero: null — no throw, a non-empty document comes back", () => {
+    const out = generateConfirmacionHTML(NO_FACTURA_FIXTURE)
+    expect(typeof out).toBe("string")
+    expect(out.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the "FACTURA #:" labelled row present, rendered with an EMPTY value (reproduce-and-flag decision)', () => {
+    const out = generateConfirmacionHTML(NO_FACTURA_FIXTURE)
+    expect(out).toContain('<span class="info-label">FACTURA #:</span>')
+    // Immediately after the label (allowing only the template's own
+    // whitespace/newline before the next tag), NOTHING is rendered — no
+    // fabricated value stands in for the absent number.
+    expect(out).toMatch(/<span class="info-label">FACTURA #:<\/span>\s*\n\s*<\/div>/)
+  })
+
+  it("AC-2: no fabricated placeholder (\"N/A\"/\"-\"/\"PENDIENTE\"/a date) appears anywhere the FACTURA # would have rendered", () => {
+    const out = generateConfirmacionHTML(NO_FACTURA_FIXTURE)
+    const facturaLineMatch = out.match(/<span class="info-label">FACTURA #:<\/span>([^\n]*)\n/)
+    expect(facturaLineMatch, "FACTURA # line not found in rendered output").not.toBeNull()
+    const renderedValue = (facturaLineMatch as RegExpMatchArray)[1].trim()
+    expect(renderedValue).toBe("")
+    expect(renderedValue).not.toBe("N/A")
+    expect(renderedValue).not.toBe("-")
+    expect(renderedValue).not.toBe("PENDIENTE")
+    expect(renderedValue).not.toBe("SIN FACTURA")
+    expect(renderedValue).not.toMatch(/\d{4}-\d{2}-\d{2}/) // no date fabricated in its place
+  })
+
+  it("does NOT literally render the string \"null\" where the number would go", () => {
+    const out = generateConfirmacionHTML(NO_FACTURA_FIXTURE)
+    expect(out).not.toContain("FACTURA #:</span> null")
+  })
+
+  it("AC-5 (positive control): a facturaNumero that DOES exist still renders exactly as before", () => {
+    const out = generateConfirmacionHTML(CLEAN_FIXTURE)
+    expect(out).toContain('<span class="info-label">FACTURA #:</span> F-000123')
+  })
+
+  it("every OTHER info-line field still renders normally when facturaNumero is null — nothing else regresses", () => {
+    const out = generateConfirmacionHTML(NO_FACTURA_FIXTURE)
+    expect(out).toContain("NOMBRE:</span> Maria Fernandez")
+    expect(out).toContain("ID RESERVA:</span> 9001")
+    expect(out).toContain("PASAJEROS:</span> 2")
+  })
+})
+
 describe("generateConfirmacionHTML — static guard: raw( appears zero times", () => {
   it("the function's source contains NO call to raw( — no data value bypasses the html tag", () => {
     const source = fs.readFileSync(path.join(__dirname, "..", "lib", "document-generator.tsx"), "utf-8")

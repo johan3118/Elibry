@@ -277,12 +277,6 @@ describe("buildConfirmacionData — BLOCK-NEVER-DEFAULT (mistakes/stockin-zero-p
     expectBlocked(input, "FECHA RESERVA")
   })
 
-  it("blocks when facturaNumero is missing (FACTURA #) — HC-2: REQUIRED, reversed from an earlier draft", () => {
-    const input = clone(validInput())
-    delete (input as any).facturaNumero
-    expectBlocked(input, "FACTURA #")
-  })
-
   it("blocks when pasajerosCount is missing (PASAJEROS) — never defaulted to 0 or 1", () => {
     const input = clone(validInput())
     delete (input.reserva as any).pasajerosCount
@@ -362,7 +356,7 @@ describe("buildConfirmacionData — BLOCK-NEVER-DEFAULT (mistakes/stockin-zero-p
     const input = clone(validInput())
     delete (input.cliente as any).email
     delete (input.reserva as any).habitacionesCount
-    delete (input as any).facturaNumero
+    delete (input.reserva as any).atendidoPor
     input.lineas = []
 
     const result = buildConfirmacionData(input)
@@ -372,11 +366,123 @@ describe("buildConfirmacionData — BLOCK-NEVER-DEFAULT (mistakes/stockin-zero-p
       expect.arrayContaining([
         "EMAIL",
         "HABITACIONES",
-        "FACTURA #",
+        "ATENDIDO POR",
         "DETALLE (la reserva no tiene líneas de servicio)",
       ]),
     )
     expect(result.missing.length).toBeGreaterThanOrEqual(4)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HC-2 REVISED (CONFIRMACIÓN — make FACTURA # OPTIONAL): `facturaNumero` was
+// previously REQUIRED (the old HC-2 ruling). That premise — a per-reserva
+// client-invoice number exists somewhere — turned out to be false: no
+// client-invoice table/column exists in this database. The human explicitly
+// ruled "make factura # optional for now." These tests are the regression
+// guard for THAT reversal, and — per AC-6 — prove every OTHER required field
+// is completely untouched.
+describe("buildConfirmacionData — HC-2 REVISED: FACTURA # is now OPTIONAL (AC-1/AC-2/AC-5/AC-6)", () => {
+  it("AC-1: builds ok:true with NO facturaNumero supplied at all (undefined) — document generates", () => {
+    const input = clone(validInput())
+    delete (input as any).facturaNumero
+
+    const result = buildConfirmacionData(input)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("unreachable")
+    // Structural guarantee: an `ok: true` result never carries `missing` at
+    // all (this is a type-level fact, not just a value check).
+    expect(Object.keys(result)).not.toContain("missing")
+  })
+
+  it("AC-1/AC-2: absent facturaNumero (undefined) is represented as `null` on `data` — never blocks, never fabricated", () => {
+    const input = clone(validInput())
+    delete (input as any).facturaNumero
+
+    const result = buildConfirmacionData(input)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("unreachable")
+    // Block-never-default (mistakes/stockin-zero-price): `null` is the ONLY
+    // acceptable representation of "absent" — never "", "N/A", "-",
+    // "PENDIENTE", today's date, or any other placeholder.
+    expect(result.data.facturaNumero).toBeNull()
+  })
+
+  it("AC-2: an explicit `null` facturaNumero also builds ok, also renders as `null` (never coerced to a placeholder)", () => {
+    const input = clone(validInput())
+    input.facturaNumero = null
+
+    const result = buildConfirmacionData(input)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("unreachable")
+    expect(result.data.facturaNumero).toBeNull()
+  })
+
+  it("AC-2: a blank/whitespace-only facturaNumero also builds ok and is normalised to `null`, not smuggled through as \"\"", () => {
+    const input = clone(validInput())
+    input.facturaNumero = "   "
+
+    const result = buildConfirmacionData(input)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("unreachable")
+    expect(result.data.facturaNumero).toBeNull()
+  })
+
+  it("AC-5 (positive control): a facturaNumero that DOES exist still renders exactly as before — proves a requirement was removed, not the feature", () => {
+    const result = buildConfirmacionData(validInput())
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("unreachable")
+    expect(result.data.facturaNumero).toBe("B0100000123")
+  })
+
+  it('"FACTURA #" never appears in `missing` under ANY input, including when literally everything else is also absent', () => {
+    const input = clone(validInput())
+    delete (input as any).facturaNumero
+    input.cliente = null
+    input.producto = null
+    input.lineas = []
+    delete (input as any).pasajeros
+
+    const result = buildConfirmacionData(input)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.missing).not.toContain("FACTURA #")
+  })
+
+  it("AC-6 regression guard: EVERY OTHER required field still blocks — cliente.email (a contact field)", () => {
+    const input = clone(validInput())
+    delete (input as any).facturaNumero // FACTURA # absent too — must not mask the real block
+    delete (input.cliente as any).email
+    const result = buildConfirmacionData(input)
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.missing).toContain("EMAIL")
+  })
+
+  it("AC-6 regression guard: EVERY OTHER required field still blocks — fecha_reserva (a date field)", () => {
+    const input = clone(validInput())
+    delete (input as any).facturaNumero
+    delete (input.reserva as any).fechaReserva
+    const result = buildConfirmacionData(input)
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.missing).toContain("FECHA RESERVA")
+  })
+
+  it("AC-6 regression guard: EVERY OTHER required field still blocks — DETALLE lines", () => {
+    const input = clone(validInput())
+    delete (input as any).facturaNumero
+    input.lineas = []
+    const result = buildConfirmacionData(input)
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.missing).toContain("DETALLE (la reserva no tiene líneas de servicio)")
   })
 })
 

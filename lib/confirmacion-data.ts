@@ -30,11 +30,21 @@
  * missing. A truthy/falsy check here would be the exact "falsy-0" variant of
  * mistakes/stockin-zero-price this whole sprint exists to remove.
  *
- * HC-2 (ruled): `facturaNumero` is REQUIRED and BLOCKS when absent — this
- * reversed an earlier draft that treated it as optional. The actual lookup
- * (`getFacturaNumeroPorReservaAction`, T7) and its own BLOCK semantics on a
- * schema/lookup failure are out of this module's scope; this builder only
- * knows "was a facturaNumero string supplied or not".
+ * HC-2 REVISED (CONFIRMACIÓN — make FACTURA # OPTIONAL): the original HC-2
+ * ruling required `facturaNumero` and blocked when absent. That ruling was
+ * correct GIVEN its premise — the premise (a per-reserva client-invoice
+ * number exists somewhere and the lookup was merely unverified) turned out
+ * to be false: `comprobantes_fiscales` is a supplier-invoice table with no
+ * `reserva_id`/`numero_factura`, and no client-invoice table exists anywhere
+ * in this database. Blocking forever on a field with no possible source is
+ * not a safeguard, so the human explicitly ruled "make factura # optional
+ * for now." `facturaNumero` is now OPTIONAL and nullable — absent is
+ * REPRESENTED (`null`), never smuggled in as `""` or a placeholder. This
+ * does NOT touch how the number is obtained: `getFacturaNumeroPorReservaAction`
+ * (T7) still returns two distinct discriminated failure reasons
+ * (SIN_COMPROBANTE vs LOOKUP_FAILED) and the caller (T8) still decides what,
+ * if anything, to surface to the operator — this builder only knows "was a
+ * facturaNumero string supplied or not".
  *
  * HC-3 (ruled): when `|Σ reserva_detalles.total − reservas.precio_total| >
  * 0.01`, this module does NOT block, does NOT emit a warning into the
@@ -85,7 +95,13 @@ export interface ConfirmacionData {
   horaSalida: string
   fechaReserva: string
   idReserva: number
-  facturaNumero: string
+  /**
+   * OPTIONAL (HC-2 REVISED, see module doc): `null` means "no client invoice
+   * exists for this reserva" — a NORMAL state in this deployment, not an
+   * error. Explicitly nullable so "absent" is representable in the contract
+   * rather than smuggled in as `""`. Never populated with a placeholder.
+   */
+  facturaNumero: string | null
   pasajerosCount: number
   habitacionesCount: number
   observaciones: string
@@ -160,7 +176,11 @@ export interface BuildConfirmacionDataInput {
   cliente: ClienteInput | null | undefined
   producto: ProductoInput | null | undefined
   reserva: ReservaInput
-  /** From T7's getFacturaNumeroPorReservaAction — REQUIRED per HC-2. */
+  /**
+   * From T7's getFacturaNumeroPorReservaAction. OPTIONAL (HC-2 REVISED): no
+   * per-reserva client-invoice source exists in this database, so an absent/
+   * blank value is a normal, non-blocking state — see the module doc.
+   */
   facturaNumero?: string | null
   lineas: ReservaDetalleInput[] | null | undefined
   /**
@@ -241,7 +261,9 @@ export function buildConfirmacionData(input: BuildConfirmacionDataInput): BuildC
   if (!esTextoValido(reserva.horaEntrada)) missing.push("HORA ENTRADA")
   if (!esTextoValido(reserva.horaSalida)) missing.push("HORA SALIDA")
   if (!esTextoValido(reserva.fechaReserva)) missing.push("FECHA RESERVA")
-  if (!esTextoValido(input.facturaNumero)) missing.push("FACTURA #")
+  // FACTURA # is OPTIONAL (HC-2 REVISED, see module doc) — deliberately NOT
+  // checked here. No `missing.push("FACTURA #")` exists anywhere in this
+  // function.
   if (!esNumeroValido(reserva.pasajerosCount)) missing.push("PASAJEROS")
   if (!esNumeroValido(reserva.habitacionesCount)) missing.push("HABITACIONES")
   if (!esTextoValido(reserva.atendidoPor)) missing.push("ATENDIDO POR")
@@ -336,11 +358,14 @@ export function buildConfirmacionData(input: BuildConfirmacionDataInput): BuildC
     horaSalida: reserva.horaSalida as string,
     fechaReserva: reserva.fechaReserva as string,
     idReserva: reserva.id as number,
-    facturaNumero: input.facturaNumero as string,
+    // HC-2 REVISED: absent -> `null`, NEVER "N/A"/"-"/PENDIENTE/"" or any
+    // other placeholder (block-never-default applies to what IS rendered,
+    // not just to whether the build blocks).
+    facturaNumero: esTextoValido(input.facturaNumero) ? (input.facturaNumero as string) : null,
     pasajerosCount: reserva.pasajerosCount as number,
     habitacionesCount: reserva.habitacionesCount as number,
-    // observaciones and referidoPor are the ONLY optional fields (AC-4):
-    // absent -> "" and the document still builds.
+    // observaciones and referidoPor are the only OTHER optional fields
+    // (AC-4): absent -> "" and the document still builds.
     observaciones: esTextoValido(reserva.observaciones) ? (reserva.observaciones as string) : "",
     lineas: lineasValidadas,
     subTotal,

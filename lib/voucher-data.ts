@@ -128,11 +128,20 @@ export interface BuildVoucherDataInput {
   /** `productos.direccion` (B2 wiring — reached via `productos.suplidor_id`, not a new column). */
   direccionHotel?: string | null
   /**
-   * `productos.telefono_contacto` (scripts/033-add-contact-fields-to-
-   * productos.sql:2-4) — the HOTEL PROPERTY's own front-desk number, reached
-   * directly off the product row (no `suplidor_id` hop). HOTFIX (2026-07-27):
-   * this used to be wired to `suplidores.telefono`, a column that never
-   * existed in the schema (`suplidores` only has `telefono_responsable`,
+   * `productos.telefonos_json` — the HOTEL PROPERTY's own front-desk
+   * number(s), reached directly off the product row (no `suplidor_id` hop).
+   * `telefonos_json` is a JSON array of strings, written by
+   * app/productos/registrar/page.tsx:220 (and mirrored in
+   * app/productos/editar/page.tsx:237) and is NOT declared in any
+   * scripts/*.sql migration — it exists only in production and in app code.
+   * HOTFIX (2026-07-28): the prior `productos.telefono_contacto` column
+   * (scripts/032/033) is dead — NULL on 100% of production rows, written by
+   * nothing — and has been replaced by this field. The caller
+   * (`derivarTelefonoHotel` in app/facturacion/voucher/page.tsx) joins every
+   * entry of `telefonos_json` with ", " before it ever reaches this input.
+   * HOTFIX (2026-07-27, superseded): this was originally wired to
+   * `suplidores.telefono`, a column that never existed in the schema
+   * (`suplidores` only has `telefono_responsable`,
    * scripts/001-create-tables.sql:21 — the account manager's phone, a
    * different person/number). PostgREST rejected every load with 42703,
    * which was silently swallowed, blocking every voucher.
@@ -214,7 +223,7 @@ export function buildVoucherData(input: BuildVoucherDataInput): BuildVoucherData
   if (!esTextoValido(input.titular)) missing.push("TITULAR")
   if (!esTextoValido(input.lugar)) missing.push("LUGAR")
   if (!esTextoValido(input.direccionHotel)) missing.push("DIRECCIÓN (productos.direccion)")
-  if (!esTextoValido(input.telefonoHotel)) missing.push("TELEFONO (productos.telefono_contacto)")
+  if (!esTextoValido(input.telefonoHotel)) missing.push("TELEFONO (productos.telefonos_json)")
   if (!esTextoValido(input.regimen)) missing.push("REGIMEN")
   if (!esTextoValido(input.localizador)) missing.push("LOCALIZADOR")
 

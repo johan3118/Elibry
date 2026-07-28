@@ -329,7 +329,15 @@ export default function FacturacionProformaPage() {
    * T8 — the real CONFIRMACIÓN DE SERVICIOS pipeline:
    *   1. (optional) persist the edited passenger list — reserva_pasajeros (T2)
    *   2. read back the real, persisted passenger list (T2)
-   *   3. read the real FACTURA # — BLOCKS with a distinct message per HC-2 (T7)
+   *   3. read the real FACTURA # (T7). HC-2 REVISED (CONFIRMACIÓN — make
+   *      FACTURA # OPTIONAL): NEVER blocks anymore.
+   *        - SIN_COMPROBANTE (no invoice issued yet — a normal state in this
+   *          deployment): continues silently, no toast.
+   *        - LOOKUP_FAILED (an engineering/technical failure — query errored
+   *          or the live schema doesn't carry the expected column): continues
+   *          generating AND fires a non-blocking destructive toast naming
+   *          the technical detail, so a broken lookup is never silently
+   *          swallowed into an unexplainable blocked/degraded document.
    *   4. build ConfirmacionData — BLOCKS with every missing named field (T5)
    *   5. (HC-3) a totals discrepancy does NOT block: the document still
    *      generates, and the discrepancy is persisted best-effort (R7: a
@@ -375,24 +383,26 @@ export default function FacturacionProformaPage() {
         documento: p.documento ?? null,
       }))
 
-      // HC-2 (T7): read-only FACTURA # lookup. Both failure branches BLOCK —
-      // the two messages are verbatim and deliberately distinct so the
-      // operator can tell a data-entry job (SIN_COMPROBANTE) from an
-      // engineering problem (LOOKUP_FAILED). Rendered as a toast
-      // `description` (a plain string passed as a React text child), so
-      // React escapes it automatically — no manual escaping is needed or
-      // performed here.
+      // HC-2 REVISED (CONFIRMACIÓN — make FACTURA # OPTIONAL): read-only
+      // FACTURA # lookup. Neither failure branch blocks generation anymore —
+      // there is no per-reserva client-invoice source in this database, so
+      // "no invoice issued yet" is a normal state, not an error. The two
+      // messages stay verbatim/distinct (getFacturaNumeroPorReservaAction,
+      // unchanged) so the two outcomes are never collapsed into one silent
+      // shape:
+      //   - SIN_COMPROBANTE: continue silently — no toast, no warning.
+      //   - LOOKUP_FAILED: continue AND surface a non-blocking destructive
+      //     toast naming the technical detail (rendered as a toast
+      //     `description`, a plain string passed as a React text child, so
+      //     React escapes it automatically — no manual escaping needed here).
       const facturaResultado = await getFacturaNumeroPorReservaAction(reserva.id)
-      if (!facturaResultado.ok) {
+      const facturaNumero: string | null = facturaResultado.ok ? facturaResultado.numeroFactura : null
+      if (!facturaResultado.ok && facturaResultado.reason === "LOOKUP_FAILED") {
         toast({
-          title:
-            facturaResultado.reason === "SIN_COMPROBANTE"
-              ? "Falta información pendiente"
-              : "Error técnico al consultar el comprobante fiscal",
+          title: "Error técnico al consultar el comprobante fiscal",
           description: facturaResultado.message,
           variant: "destructive",
         })
-        return
       }
 
       // Raw cliente/producto lookup — DELIBERATELY independent of
@@ -458,7 +468,7 @@ export default function FacturacionProformaPage() {
         cliente: clienteInput,
         producto: productoInput,
         reserva: reservaInput,
-        facturaNumero: facturaResultado.numeroFactura,
+        facturaNumero,
         lineas: lineasInput,
         pasajeros,
         pagosReserva,

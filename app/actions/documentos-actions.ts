@@ -340,6 +340,64 @@ export async function getOcupacionesReservaAction(reservaId: number) {
   }
 }
 
+/** One row of `reserva_detalles`, as read by getDetallesReservaParaVoucherAction. */
+export interface DetalleReservaParaVoucher {
+  id: number
+  concepto: string
+  descripcion: string | null
+  habitaciones: number | null
+}
+
+/**
+ * VOUCHER prefill task: reads the SERVICE LINES of one reserva
+ * (`reserva_detalles`) so the voucher's occupancy-group editor can be
+ * seeded ONE ROW PER LINE, in the reserva's own order, when nothing has
+ * been saved to `reserva_ocupaciones` yet. Read-only — this action never
+ * writes.
+ *
+ * Column names verified against scripts/023-create-reserva-detalles-table-fixed.sql
+ * (NOT against lib/supabase.ts's `ReservaDetalle` interface, which the T15
+ * investigation already found incomplete — missing estado_registro /
+ * usuario_creacion / fecha_provisional / dependencias_ids from
+ * scripts/047:39-43 — and a stale interface in that exact file caused a
+ * production outage):
+ *   - id           scripts/023:3  (SERIAL PRIMARY KEY)
+ *   - concepto     scripts/023:5  (VARCHAR(200) NOT NULL)
+ *   - descripcion  scripts/023:6  (TEXT, nullable — no NOT NULL, no DEFAULT)
+ *   - habitaciones scripts/023:15 (INTEGER DEFAULT 1, nullable) — this is the
+ *     PER-LINE room count. `reservas.habitaciones` is a SUM across every
+ *     line via the `recalcular_totales_reserva` trigger
+ *     (scripts/023:69-85) and must NEVER be used as a per-group source.
+ *
+ * Ordered by `id` (insertion order) so the mapped occupancy groups line up
+ * with the reserva's own line order, matching how the lines were entered.
+ *
+ * No named SELECT-columns constant (unlike PRODUCTOS_SELECT_COLUMNS in
+ * app/facturacion/voucher/page.tsx): this file's own sibling read action,
+ * getDatosVoucherReservaAction just above, already establishes the
+ * convention of an inline select string for a single-use server action —
+ * PRODUCTOS_SELECT_COLUMNS exists because voucher/page.tsx queries
+ * `productos` directly from the browser with the anon client across
+ * multiple call sites; this is one server-only call site querying a table
+ * no other code in this file touches, so a shared constant would have
+ * nothing to be shared with.
+ */
+export async function getDetallesReservaParaVoucherAction(reservaId: number) {
+  try {
+    const supabase = createSupabaseServerClient()
+    const { data, error } = await supabase
+      .from("reserva_detalles")
+      .select("id, concepto, descripcion, habitaciones")
+      .eq("reserva_id", reservaId)
+      .order("id", { ascending: true })
+
+    if (error) return { success: false, error: error.message }
+    return { success: true, data: (data ?? []) as DetalleReservaParaVoucher[] }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error desconocido" }
+  }
+}
+
 interface EnlacePasajeroOcupacion {
   id: number
   ocupacion_id: number

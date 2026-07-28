@@ -950,6 +950,9 @@ export function generateProformaHTML(data: ProformaData): string {
  * there is no `||`/`??` fallback anywhere below for a required field —
  * `observaciones` and `referidoPor` are the only optional fields (T5 AC-4)
  * and both already default to `""` inside the builder, never here.
+ * `facturaNumero` (HC-2 REVISED) is ALSO optional, but is represented as
+ * `string | null`, not `""` — see the FACTURA # decision comment right
+ * before this function's `return renderHtml(html\`...` below.
  *
  * MONEY FORMATTING NOTE (flagged for T10's full fidelity walk): the source
  * .docx's DETALLE/SUB_TOTAL/DESC_TOTAL/TOTAL/MONTO PAGADO/BALANCE RESERVA
@@ -1007,6 +1010,21 @@ export function generateConfirmacionHTML(data: ConfirmacionData): string {
   // lines and no invented placeholder (no fake "1)", no "Bryan Méndez").
   const pasajerosOrdenados = [...data.pasajeros].sort((a, b) => a.orden - b.orden)
 
+  // HC-2 REVISED (CONFIRMACIÓN — make FACTURA # OPTIONAL, reproduce-and-flag):
+  // DECISION — keep the "FACTURA #:" labelled row below; render an EMPTY
+  // value when `data.facturaNumero` is `null`, never omit the row and never
+  // substitute a placeholder ("N/A"/"-"/"PENDIENTE"/a date). Reasoning:
+  //  1. docs/CONFIRMACION GEB.docx shows "FACTURA #: 3598" as a plain inline
+  //     "LABEL: value" on the SAME line as every other field in this exact
+  //     block — the source document carries no conditional markup to compare
+  //     the empty case against (it is a single filled-in sample), so the
+  //     structural shape (label always present) is what's reproduced.
+  //  2. This mirrors this document's own established precedent for its only
+  //     other optional fields, `observaciones`/`referidoPor` (T5): the label
+  //     stays, the value renders blank.
+  // `${data.facturaNumero}` below is interpolated through the `html` tag,
+  // whose `escapeHtmlText` (lib/html-escape.ts) already renders `null` as
+  // `""` — no `||`/`??` fallback is added here.
   return renderHtml(html`
     <!DOCTYPE html>
     <html lang="es">

@@ -63,6 +63,7 @@ import {
   getFacturaNumeroPorReservaAction,
   getDatosVoucherReservaAction,
   guardarDatosVoucherReservaAction,
+  getDetallesReservaParaVoucherAction,
   type PasajeroInput,
   type OcupacionInput,
   type DiscrepanciaTotalesPayload,
@@ -423,6 +424,71 @@ describe("getOcupacionesReservaAction", () => {
 
     expect(result.success).toBe(false)
     expect((result as any).error).toBe("connection refused")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VOUCHER PREFILL task (2026-07-28): getDetallesReservaParaVoucherAction —
+// the new READ-ONLY action feeding the occupancy-editor prefill. Column
+// names cited to scripts/023-create-reserva-detalles-table-fixed.sql in the
+// action's own JSDoc, not to lib/supabase.ts's ReservaDetalle interface.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("getDetallesReservaParaVoucherAction", () => {
+  it("happy path — returns id/concepto/descripcion/habitaciones, ordered by id, filtered by reserva_id", async () => {
+    const fakeRows = [
+      { id: 10, concepto: "PRUEBA 1 DOBLE", descripcion: "Habitación vista mar", habitaciones: 1 },
+      { id: 11, concepto: "PRUEBA 2 SENCILLA", descripcion: "Habitación estándar", habitaciones: 2 },
+    ]
+    const builder = makeQueryBuilder({ data: fakeRows, error: null })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDetallesReservaParaVoucherAction(77)
+
+    expect(result.success).toBe(true)
+    expect((result as any).data).toEqual(fakeRows)
+    expect(mockFrom).toHaveBeenCalledWith("reserva_detalles")
+    expect(builder.select).toHaveBeenCalledWith("id, concepto, descripcion, habitaciones")
+    expect(builder.eq).toHaveBeenCalledWith("reserva_id", 77)
+    expect(builder.order).toHaveBeenCalledWith("id", { ascending: true })
+  })
+
+  it("zero rows for a reserva with no service lines — returns an empty array, not an error", async () => {
+    const builder = makeQueryBuilder({ data: [], error: null })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDetallesReservaParaVoucherAction(78)
+
+    expect(result.success).toBe(true)
+    expect((result as any).data).toEqual([])
+  })
+
+  it("null descripcion/habitaciones round-trip as null, never substituted", async () => {
+    const fakeRows = [{ id: 20, concepto: "PRUEBA SIN DESCRIPCION", descripcion: null, habitaciones: null }]
+    const builder = makeQueryBuilder({ data: fakeRows, error: null })
+    mockFrom.mockImplementation(() => builder)
+
+    const result = await getDetallesReservaParaVoucherAction(79)
+
+    expect((result as any).data[0].descripcion).toBeNull()
+    expect((result as any).data[0].habitaciones).toBeNull()
+  })
+
+  it("error path — returns success: false with the Supabase error message", async () => {
+    queueFromResults({ data: null, error: { message: "connection refused" } })
+
+    const result = await getDetallesReservaParaVoucherAction(80)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toBe("connection refused")
+  })
+
+  it("exception path — returns success:false when supabase.from itself throws (never throws into the caller)", async () => {
+    mockFrom.mockImplementation(() => {
+      throw new Error("boom")
+    })
+    const result = await getDetallesReservaParaVoucherAction(81)
+    expect(result.success).toBe(false)
+    expect((result as any).error).toBe("boom")
   })
 })
 
