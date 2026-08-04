@@ -32,6 +32,7 @@ import {
 } from "@/lib/confirmacion-data"
 import type { ReservaBalanceInput } from "@/lib/finance"
 import { resolverReservaDeepLink } from "@/lib/deep-link-reserva"
+import { resolverFacturaNumeroConfirmacion } from "@/lib/factura-numero-confirmacion"
 import {
   resolverPasajerosParaEditor,
   type EditablePasajero,
@@ -431,15 +432,10 @@ function FacturacionProformaPageInner() {
       //     toast naming the technical detail (rendered as a toast
       //     `description`, a plain string passed as a React text child, so
       //     React escapes it automatically — no manual escaping needed here).
-      const facturaResultado = await getFacturaNumeroPorReservaAction(reserva.id)
-      const facturaNumero: string | null = facturaResultado.ok ? facturaResultado.numeroFactura : null
-      if (!facturaResultado.ok && facturaResultado.reason === "LOOKUP_FAILED") {
-        toast({
-          title: "Error técnico al consultar el comprobante fiscal",
-          description: facturaResultado.message,
-          variant: "destructive",
-        })
-      }
+      const facturaNumero: string | null = resolverFacturaNumeroConfirmacion(
+        await getFacturaNumeroPorReservaAction(reserva.id),
+        toast,
+      )
 
       // Raw cliente/producto lookup — DELIBERATELY independent of
       // getClienteData/getProductoData above, which apply display-only
