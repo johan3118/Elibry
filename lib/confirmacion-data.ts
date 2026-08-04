@@ -177,11 +177,11 @@ export interface BuildConfirmacionDataInput {
   producto: ProductoInput | null | undefined
   reserva: ReservaInput
   /**
-   * From T7's getFacturaNumeroPorReservaAction. OPTIONAL (HC-2 REVISED): no
-   * per-reserva client-invoice source exists in this database, so an absent/
-   * blank value is a normal, non-blocking state — see the module doc.
+   * From T7's getFacturaNumeroPorReservaAction. The PROPERTY is REQUIRED so
+   * that omitting the resolution step is a COMPILE ERROR; the VALUE stays
+   * optional-by-`null` (ADR-0012 / HC-2 REVISED) — see the module doc.
    */
-  facturaNumero?: string | null
+  facturaNumero: string | null
   lineas: ReservaDetalleInput[] | null | undefined
   /**
    * The passenger list for THIS reserva (from T2's getPasajerosReservaAction).
