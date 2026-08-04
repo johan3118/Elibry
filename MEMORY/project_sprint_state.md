@@ -1,5 +1,5 @@
 # Elibry — Project Sprint State
-# as of 2026-07-28
+# as of 2026-08-04
 
 ---
 
@@ -528,6 +528,149 @@ this** — `documento_destino` and the swapped UNIQUE constraint stay applied; t
   `information_schema`-vs-`lib/supabase.ts` reconciliation, `.docx` verification, the 5 demo rows
   in `comprobantes_fiscales`, client invoicing as an un-started project, **credential rotation
   still not done**) is **unchanged** by this sprint.
+
+---
+
+### 2026-08-04 — factura-numero-lookup-contract (T0–T4, COMMITTED)
+
+**Plan:** `docs/plans/factura-numero-lookup-contract.md` · **Slug:** `factura-numero-lookup-contract`
+**Baseline:** `89cc76e` → **HEAD:** `e3e7906`. **Commits: `a774a9f` (Tasks 1 AND 2 together),
+`e3e7906` (Task 3).** This is the first sprint in this file that actually committed. Note the plan's
+line 234 claim *"each task ships one commit"* is **false in reality** — Tasks 1 and 2 both live in
+`a774a9f` and are not separable (amendment G12).
+All five tasks: QA PASS, lead APPROVE. Lead edited no source file.
+
+#### 1. What shipped — ZERO user-visible change
+
+An operator cannot tell this sprint happened. Same toast title, same description, same
+`variant: "destructive"`, same position in the flow, same document output (`FACTURA #:` label, empty
+value in the normal state). That is the design (AC-8). What was actually bought:
+
+1. **A testable seam where there was none.** ADR-0012's design rule — `SIN_COMPROBANTE` (normal,
+   silent) and `LOOKUP_FAILED` (technical failure, destructive toast) **must never collapse** —
+   previously lived inline inside `generarConfirmacion`, a closure inside a ~1010-line
+   `"use client"` component: not importable, therefore not testable, therefore not pinned. It now
+   lives in **`lib/factura-numero-confirmacion.ts` (31 lines)**, imported directly by node tests
+   that drive the real production path (not a mirror).
+2. **A regression guard that survived three adversarial rounds.** `tests/factura-numero-confirmacion.test.ts`,
+   7 `it` blocks. Task 1 was sent back twice on QA mutations that stayed GREEN: **QA-M2** (a *full*
+   hardcode of the `ok` return) and **QA-M6** (a *partial* series-prefix hardcode, `"B01" +
+   slice(3)`, which survived only because both fixtures shared the `B010000` prefix). The final
+   suite kills both.
+3. **One emission site.** `"Error técnico al consultar el comprobante fiscal"` now occurs **exactly
+   once** in production source (AC-6 grep = 1, in `lib/factura-numero-confirmacion.ts`); it was at
+   `app/facturacion/proforma/page.tsx:438` at baseline.
+4. **A compile-time omission guard.** `BuildConfirmacionDataInput.facturaNumero` went optional →
+   **required** (type-only, `lib/confirmacion-data.ts`). Delete the FACTURA # resolution step from
+   the generation path and `tsc --noEmit` — therefore `npm run qa` — fails. The runtime expression
+   at `lib/confirmacion-data.ts:364` is **byte-identical**; ADR-0012's "absent → `null`, never
+   blocks" tests stay green with intent unmodified.
+5. **3 production files, 53 changed lines** (cap 3 files / ≤60): `lib/factura-numero-confirmacion.ts`
+   (new), `app/facturacion/proforma/page.tsx` (14 lines, 2 hunks), `lib/confirmacion-data.ts`
+   (8 lines, type-only). Plus `tests/factura-numero-confirmacion.test.ts` (new, excluded from cap).
+   **No DB, no RLS, no auth, no NCF, no new `.select()`, no `scripts/` change.**
+
+#### 2. Evidence
+
+- **Task 0** — `git rev-parse HEAD` = `89cc76e`, clean tree; `rm -rf .next && npm run qa` → 27 files
+  / 618 tests / 0 lint errors / 30 warnings / 0 failures; `npx next build` clean; AC-6 grep → 1 hit
+  at `proforma/page.tsx:438`. QA PASS.
+- **Task 1** — six plan mutations run RED with the failing assertion named, restored green. Rounds
+  1-2 QA **RISKY → lead SEND-BACK** (QA-M2, QA-M6); round 3 QA PASS. Test count 618 → 625.
+- **Task 2** — 14 changed lines confined to the import block + `:422-442`; AC-6 grep → exactly 1;
+  `rm -rf .next && npm run qa` green; `npx next build` clean. QA PASS round 1.
+- **Task 3** — 8 changed lines, type-only; `:364` byte-identical, no `missing.push` added,
+  `tests/confirmacion-data.test.ts` / `confirmacion-html.test.ts` untouched and green; the AC-7
+  mutation failed typecheck naming `facturaNumero`, restored green. QA's counterfactual proved the
+  guard load-bearing. QA PASS round 1.
+- **Task 4 (verification only, zero files)** — round 1 QA RISKY → **lead SEND-BACK, BUG-1**: the
+  stated Task 1 rollback was **inexecutable** (`git checkout 89cc76e -- lib/factura-numero-confirmacion.ts
+  tests/factura-numero-confirmacion.test.ts` → `error: pathspec … did not match any file(s) known to
+  git`, exit 1 — the files do not exist at the baseline). Round 2: QA executed the corrected
+  four-command sequence **end-to-end in a fresh throwaway clone** (exits 0/0/0/0),
+  `git diff 89cc76e HEAD --stat` **empty**, `npx tsc --noEmit` 0 errors, `npx vitest run` 27 files /
+  618 tests. AC-11 → 3 production files / 53 lines. AC-10 → `git status --porcelain scripts/` empty
+  and the amended (test-excluding) `.select(|insert|update|upsert|delete|ncf` gate returns nothing.
+  QA PASS. HEAD unchanged, no file written.
+
+#### 3. Rollback path (whole sprint) — QA-VERIFIED, VERBATIM
+
+```
+git revert --no-edit e3e7906
+git checkout 89cc76e -- app/facturacion/proforma/page.tsx
+git rm -f lib/factura-numero-confirmacion.ts tests/factura-numero-confirmacion.test.ts
+git commit -m "Roll back factura-numero-lookup-contract sprint"
+```
+
+QA ran all four in a fresh clone: exits 0, 0, 0, 0; `git diff 89cc76e HEAD --stat` **empty**
+(byte-identical to the pre-sprint tree); `npx tsc --noEmit` 0 errors; 27 files / 618 tests passed.
+
+- **Ordering constraint — run them in exactly this order.** `git rm` before the page revert leaves
+  an intermediate tree that does not compile:
+  `app/facturacion/proforma/page.tsx(35,51): error TS2307: Cannot find module '@/lib/factura-numero-confirmacion'`.
+  Precise form (lead-adopted from QA): *wrong order leaves a non-compiling intermediate state; the
+  final tree is only correct if you do not commit or validate between steps.*
+- **Do NOT use `git revert a774a9f` as a per-task rollback.** Reason: **it over-reverts Tasks 1 and
+  2 together** (`a774a9f` contains Task 1's new lib+test AND Task 2's page edit). It does **NOT**
+  break the build — QA ran it: exit 0, `tsc --noEmit` 0 errors. Round 1's "breaks the build"
+  framing was a false claim and has been struck.
+- **Partial rollback:** Task 3 alone IS independently revertable — `git revert e3e7906`, exit 0,
+  tsc 0 errors, Task 1's unit suite still 7/7 green.
+- No DB migration and no destructive operation occurred; nothing to unwind outside the repo.
+
+#### 4. The honest part — residual risk, three parts. Coverage is NOT complete.
+
+- **(a) Verbatim (Task 4 AC-6):** "The unit's notifier contract is pinned by node tests; **nothing
+  here proves the toast reaches the operator through the real Radix toaster** — that requires a
+  jsdom/RTL mount (spec NON-GOAL) or the still-owed §8.3 human click-through. Coverage is NOT
+  complete."
+- **(b) MUTANT B — found by QA at Task 2, undetectable by the suite.** The dev disclosed MUTANT A
+  (pass a no-op `() => {}` notifier instead of `toast`). QA found a **worse** one: the page
+  **discarding the unit's return value**. Unit tests stay green, AC-6 grep still prints 1, nothing
+  goes red. The suite pins the unit; it does not pin the page's *use* of the unit.
+- **(c) ATTACK C1 — found by QA at Task 3.** A hardcoded `facturaNumero: null` at the
+  `buildConfirmacionData` call site satisfies the now-required property and defeats the
+  compile-time guard entirely.
+- **Claim boundary, carried forward: the type system pins PRESENCE, not PROVENANCE.** It proves the
+  property was supplied; it cannot prove the value came from the real lookup.
+- **HC-1 / ADR-0011 unchanged** — no authentication, browser still runs as PostgREST `anon`, ~29
+  pre-existing tables still have zero RLS. **This sprint did not make Elibry more secure.**
+  **ADR-0006 not triggered** (no table created). No NCF allocation, no write to
+  `comprobantes_fiscales` / `comprobantes_disponibles`.
+- **The human gate is the merge gate.** Fiscal-adjacent per `CLAUDE.md`. The packet was never
+  written to disk (Task 4's file scope is NONE, correctly) — it exists only in the session
+  transcript. Whoever hands it to the human **must paste the rollback block verbatim**; a
+  paraphrased rollback sequence is exactly what produced BUG-1. That is why the four commands above
+  are recorded here in full.
+
+#### 5. Deferred / backlog carried forward
+
+- **B-18 — the branded-type follow-up**: the only known closure for ATTACK C1 (a nominal/branded
+  type so a hardcoded `null` cannot satisfy the guard). Its own scoped task; not actioned.
+- **jsdom/RTL component-mount harness** — explicit spec NON-GOAL, still absent, still the only
+  in-repo closure for MUTANT A/B.
+- **`docs/plans/factura-numero-lookup-contract.md:146` is FALSE and was struck in the packet, not in
+  the file.** It claims AC-7's required property "is the only way the whole step vanished fails a
+  gate." QA refuted it: after `git revert a774a9f` (the whole FACTURA # step gone from the page)
+  `npx tsc --noEmit` returned **0 errors** — the guard did not fire. Anyone re-reading that plan
+  must know line 146 was struck. Same for line 234 (G12, one-commit-per-task).
+- **`.git/objects` chown/permission issue** hit during the sprint — flagged, **not root-caused**.
+  Same family as `~/Developer/CBrain/mistakes/environment-reliability-incidents.md`.
+- **§8.3 human click-through from the PRIOR sprint (`reserva-document-entry-points`, 2026-08-03,
+  commits `29255f2` + `89cc76e`) is STILL OWED and still un-click-tested by a human.** No browser
+  automation is connected. This sprint did not close it and is partly *blocked* by it.
+- **Fourth instance of a now-named recurring pattern**: `derivarTelefonoHotel` →
+  `PRODUCTOS_SELECT_COLUMNS` → `resolverOcupacionesParaPrefill` → now
+  `resolverFacturaNumeroConfirmacion` — *a helper is extracted and unit-pinned, and nothing forces
+  the real caller to use it.* MUTANT B is the cleanest proof yet. Filed as a new mistake in the
+  shared brain at sprint close.
+- **File-size:** `proforma/page.tsx` is ~1006 lines (this sprint *reduced* it by ~4). Still past the
+  ≤500 rule; split remains B-1/B-9, never bundled. `lib/factura-numero-confirmacion.ts` (31) and
+  `lib/confirmacion-data.ts` (~420) are in range.
+- Everything carried forward from the prior entries (the `information_schema`-vs-`lib/supabase.ts`
+  reconciliation, `.next/types` vs. page-exported helpers, `.docx` verification, the 5 demo rows in
+  `comprobantes_fiscales`, client invoicing as an un-started project, **credential rotation still
+  not done**) is **unchanged** by this sprint.
 
 ---
 
