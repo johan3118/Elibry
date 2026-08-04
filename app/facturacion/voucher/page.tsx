@@ -96,10 +96,11 @@ import {
  * field editable and every section independently savable — while
  * `localizador` is absent, because an agent must be able to fill in rooms,
  * passengers and pax counts BEFORE the hotel replies with a confirmation
- * code. Only "Generar e Imprimir" and "Descargar como PDF" are disabled
- * while the PERSISTED localizador is missing, with a visible reason next to
- * the buttons. `construirVoucherData` below is the single, comprehensive
- * gate both buttons share (T15 AC-8) — it re-reads every persisted source
+ * code. Only "Generar e Imprimir" is disabled while the PERSISTED localizador
+ * is missing, with a visible reason next to the button. ("Descargar como PDF"
+ * shared this gate until it was removed on 2026-08-04 — broken renderer.)
+ * `construirVoucherData` below is the single, comprehensive
+ * gate that button uses (T15 AC-8) — it re-reads every persisted source
  * fresh and runs `buildVoucherData` (T13), which blocks on ANY missing
  * required field (not just localizador) and names every one of them at
  * once, never just the first.
@@ -666,8 +667,9 @@ function VoucherPageInner() {
   }
 
   /**
-   * The single, comprehensive gate both "Generar e Imprimir" and "Descargar
-   * como PDF" share (T15 AC-8/AC-9/AC-10). Re-reads every persisted source
+   * The single, comprehensive gate "Generar e Imprimir" uses — and that the
+   * removed "Descargar como PDF" also used (T15 AC-8/AC-9/AC-10), so the
+   * unwired `downloadVoucherAsPDF` below still calls it. Re-reads every source
    * FRESH — never trusts an unsaved keystroke sitting in local draft state
    * as if it were real — builds a FRESH `BuildVoucherDataInput` literal, and
    * passes it straight into `buildVoucherData()`. Returns the resulting
@@ -1278,7 +1280,15 @@ function VoucherPageInner() {
               <Separator />
 
               {/* Botones de Generar — bloqueados mientras el LOCALIZADOR persistido esté ausente (T15 AC-2) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/*
+                "Descargar como PDF" was REMOVED here (2026-08-04): the
+                html2canvas + jsPDF path did not render correctly. The handler
+                `downloadVoucherAsPDF` is deliberately KEPT below, unwired, so
+                the fix is a one-line re-add rather than an archaeology job.
+                Operators use "Generar e Imprimir Voucher" (the browser's own
+                print dialog can produce a PDF) until it is fixed.
+              */}
+              <div className="grid grid-cols-1 gap-4">
                 <Button
                   onClick={generateVoucher}
                   disabled={generarDeshabilitado}
@@ -1288,19 +1298,10 @@ function VoucherPageInner() {
                   <Printer className="w-4 h-4 mr-2" />
                   Generar e Imprimir Voucher
                 </Button>
-                <Button
-                  onClick={downloadVoucherAsPDF}
-                  disabled={generarDeshabilitado}
-                  variant="outline"
-                  className="w-full bg-transparent"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar como PDF
-                </Button>
               </div>
               {selectedReserva && localizadorPersistidoAusente && (
                 <p className="text-sm text-red-600">
-                  Guarda un LOCALIZADOR (código del proveedor) antes de generar o descargar el voucher. El resto de
+                  Guarda un LOCALIZADOR (código del proveedor) antes de generar el voucher. El resto de
                   esta pantalla puede completarse y guardarse mientras tanto.
                 </p>
               )}
