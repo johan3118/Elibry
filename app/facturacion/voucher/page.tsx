@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, Suspense } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,8 @@ import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 import { Receipt, ArrowLeft, Printer, Search, Calendar, MapPin, Users, Plane, PlusIcon, X, Download } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+import { resolverReservaDeepLink } from "@/lib/deep-link-reserva"
 import { supabase } from "@/lib/supabase"
 import { generateVoucherDocHTML, openDocumentInNewWindow } from "@/lib/document-generator"
 import {
@@ -409,12 +411,17 @@ const REGIMEN_OPCIONES = [
   { value: "DESAYUNO", label: "Desayuno" },
 ]
 
-export default function VoucherPage() {
+function VoucherPageInner() {
+  const searchParams = useSearchParams()
   const [reservas, setReservas] = useState<Reserva[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Starts TRUE: fetchReservas runs on mount and always resolves it in its
+  // `finally`. If it started false, the deep-link effect below would observe
+  // `loading === false` with `reservas === []` on the very first render and
+  // report a perfectly valid id as "no encontrada".
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
   const [voucherDraft, setVoucherDraft] = useState<VoucherDraft>({
@@ -574,7 +581,7 @@ export default function VoucherPage() {
 
     const [datosResultado, pasajerosResultado, ocupacionesResultado, detallesResultado] = await Promise.all([
       getDatosVoucherReservaAction(reserva.id),
-      getPasajerosReservaAction(reserva.id),
+      getPasajerosReservaAction(reserva.id, "VOUCHER"),
       getOcupacionesReservaAction(reserva.id),
       getDetallesReservaParaVoucherAction(reserva.id),
     ])
@@ -651,6 +658,41 @@ export default function VoucherPage() {
       }
     }
   }
+
+  /**
+   * Deep link from /reservas/ver/[id] and /reservas/pendientes:
+   * `?reserva_id=<reservas.id>` selects that reserva through the EXISTING
+   * handleReservaSelect and filters the list to its `codigo`. No selection,
+   * prefill, LOCALIZADOR gating or validation logic is duplicated here.
+   *
+   * Runs once: the ref latch is set BEFORE the call, and the effect
+   * early-returns while `loading`, so `productos`/`clientes` have committed
+   * before handleReservaSelect reads them via getProductoData (otherwise
+   * `lugar` would silently prefill blank).
+   */
+  const deepLinkAplicado = useRef(false)
+
+  useEffect(() => {
+    if (loading || deepLinkAplicado.current) return
+
+    const resultado = resolverReservaDeepLink(searchParams.get("reserva_id"), reservas)
+    if (resultado.estado === "sin-param") return
+
+    deepLinkAplicado.current = true
+
+    if (resultado.estado === "no-encontrada") {
+      toast({
+        title: "Reserva no encontrada",
+        description: `No existe una reserva con id ${resultado.param}. Seleccione una de la lista.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSearchQuery(resultado.reserva.codigo)
+    handleReservaSelect(resultado.reserva)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, reservas, searchParams])
 
   const handleVoucherDraftChange = <K extends keyof VoucherDraft>(field: K, value: VoucherDraft[K]) => {
     setVoucherDraft((prev) => ({ ...prev, [field]: value }))
@@ -817,6 +859,7 @@ export default function VoucherPage() {
       selectedReserva.id,
       pasajerosInput,
       user?.nombre || "Usuario Sistema",
+      "VOUCHER",
     )
 
     if (!resultado.success) {
@@ -846,7 +889,7 @@ export default function VoucherPage() {
   const construirVoucherData = async (reserva: Reserva): Promise<VoucherDocData | null> => {
     const [datosResultado, pasajerosResultado, ocupacionesResultado] = await Promise.all([
       getDatosVoucherReservaAction(reserva.id),
-      getPasajerosReservaAction(reserva.id),
+      getPasajerosReservaAction(reserva.id, "VOUCHER"),
       getOcupacionesReservaAction(reserva.id),
     ])
 
@@ -1522,5 +1565,28 @@ export default function VoucherPage() {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Next 14.2 requires any client component calling useSearchParams() to sit
+ * under a Suspense boundary, or `next build` fails with "useSearchParams()
+ * should be wrapped in a suspense boundary". `npm run qa` never runs
+ * `next build`, so only `npx next build` proves this.
+ *
+ * The fallback reuses this page's own existing spinner markup.
+ */
+export default function VoucherPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="text-center py-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-500">Cargando reservas...</p>
+        </div>
+      }
+    >
+      <VoucherPageInner />
+    </Suspense>
   )
 }

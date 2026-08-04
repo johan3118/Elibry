@@ -171,6 +171,10 @@ wrong for a document a guest presents at a hotel front desk. Also: stopped swall
 errors (clientes + productos now toast), and corrected the stale `Suplidor.telefono` →
 `telefono_responsable` in `lib/supabase.ts`.
 
+**Note (superseded 2026-07-28, same day): this exact fix was itself repointed again in the
+"Live DB verification session" entry below — `productos.telefono_contacto` turned out to be a dead
+column, NULL on every production row.**
+
 **Files changed** (all uncommitted, tree sits on `2f768c2` "wave 4"):
 `app/facturacion/voucher/page.tsx`, `lib/voucher-data.ts`, `lib/supabase.ts`,
 `tests/voucher-data.test.ts`, `tests/voucher-html.test.ts`, `tests/voucher-page.test.ts` (new).
@@ -247,7 +251,283 @@ human-controlled DB operation, out of scope here.
 
 **Not fixed, explicitly out of scope:** HC-1 (no authentication, no RLS on ~29 pre-existing
 tables — ADR 0011) — unchanged by this hotfix. CONFIRMACIÓN's status still depends on R3
-(`comprobantes_fiscales` needing `reserva_id`/`numero_factura`) — still unverified.
+(`comprobantes_fiscales` needing `reserva_id`/`numero_factura`) — still unverified **as of this
+entry; answered in the entry below.**
+
+---
+
+### 2026-07-28 — Live DB verification session (uncommitted, on top of `4d92173`)
+
+**Trigger:** the human applied `scripts/061`, `062`, `063` to their real Supabase database for the
+first time, hit failures, then pasted a full `.env` (POSTGRES_URL, SUPABASE_SERVICE_ROLE_KEY,
+SUPABASE_JWT_SECRET, POSTGRES_PASSWORD, anon key) into the chat so the agent could stop guessing.
+**First time this project has had live production database access.** The agent flagged the paste
+once, clearly, recommended rotation, and continued — it is the human's database and their call. No
+credential value is recorded anywhere in this entry or the brain. The agent used the credentials
+**read-only**; it wrote nothing to the database. Durable lesson: hand the agent a **file path**
+("read .env.local") rather than pasting secrets into a transcript that may be retained — recorded
+as a team-wide convention in `~/Developer/CBrain/agents/tool-use.md`.
+
+#### 1. What shipped / was answered
+
+1. **VOUCHER TELEFONO repointed again — to the real column.** The previous entry's hotfix moved
+   TELEFONO from the nonexistent `suplidores.telefono` to `productos.telefono_contacto`. A live
+   query proved `telefono_contacto` is **NULL on all 8 production rows** and nothing in the app
+   ever writes it — a dead column from `scripts/032`+`033`. The real populated column is
+   `productos.telefonos_json`, a JSON string array (e.g. `["8492522022","8093222058"]`), written by
+   `app/productos/registrar/page.tsx:220` and `app/productos/editar/page.tsx:237`, read by
+   `app/productos/ver/page.tsx:145`. **`telefonos_json` and `emails_json` appear in zero migration
+   files** — confirmed by grep across all of `scripts/`. Human ruled: print ALL entries joined
+   `", "`; duplicates preserved (production has them). Shipped, QA PASS, lead APPROVE.
+2. **R3 definitively answered — and it is the bad case.** R3 (does `comprobantes_fiscales` have
+   `reserva_id`/`numero_factura`?) has been the top open risk since `geb-documents-real-data`. Live
+   query: **both missing (`42703`)**, along with `cliente_id`, `codigo_reserva`, `factura`. The real
+   table is a **supplier-invoice** table: `id`, `numero_comprobante`, `tipo_comprobante`, `ncf`,
+   `fecha_emision`, `fecha_vencimiento`, `proveedor_nombre`, `proveedor_rnc`, `proveedor_direccion`,
+   `proveedor_telefono`, `descripcion`, `subtotal`, `itbis`, `total`, `moneda`, `tasa_cambio`,
+   `estado`, `documento_url`, `observaciones`, `usuario_registro`, `fecha_registro`,
+   `usuario_modificacion`, `fecha_modificacion`. Its 5 rows are generic demo seed data (e.g.
+   "Distribuidora Central S.A.", "Ferretería El Constructor" — construction materials, hardware
+   stores, fuel, office supplies), nothing travel-related, untouched since 2025-11-10. No
+   client-invoice linkage table exists anywhere — `facturas`, `facturas_clientes`, `comprobantes`,
+   `ncf_secuencias`, `secuencias_ncf`, `facturacion` were all probed and are all absent. All 6
+   production `reservas` rows: `proforma="PROFORMA"`, `factura_url=null`,
+   `factura_cliente_url=null`, `factura_enviada_cliente="NO"` — **no client invoice has ever been
+   issued in this system.** `comprobantes_disponibles` IS legitimate: 8 correctly-shaped DGII NCF
+   blocks (B010 crédito fiscal, B020 consumo, B030/B040 notas, B110 compras, B130 gastos menores),
+   with authorization/expiry dates, one marked AGOTADO — simply never linked to a reserva.
+   Investigation only; nothing shipped from this finding directly — it is the evidentiary basis for
+   item 3.
+3. **HC-2 reversed — a documented fiscal ruling overturned on evidence.** HC-2 (from
+   `geb-documents-real-data`) ruled FACTURA # must block CONFIRMACIÓN rather than render
+   blank/fabricated — correct given its premise (the number existed and the lookup was merely
+   unverified). Finding 2 falsified that premise: there is no possible source, so blocking forever
+   is a dead end, not a safeguard. Human ruled: **"make factura # optional for now."** Shipped:
+   `facturaNumero` is now `string | null` in `lib/document-generator.tsx`; the required-field check
+   removed; absent normalizes to `null` (never `""`/`"N/A"`/placeholder/date); the document keeps
+   the "FACTURA #:" label and renders an empty value, matching the existing `Referido por:`
+   optional-field precedent (`document-generator.tsx:1575-1579`);
+   `app/facturacion/proforma/page.tsx` no longer early-returns. **Design rule enforced:**
+   `SIN_COMPROBANTE` (the normal state — no comprobante exists) generates silently, no toast;
+   `LOOKUP_FAILED` (a technical failure) generates but fires a non-blocking destructive toast —
+   these must never collapse into one silent outcome (that collapse is what caused the prior day's
+   outage). Recorded as ADR
+   `~/Developer/CBrain/decisions/0012-elibry-confirmacion-without-factura-numero.md`. QA
+   independently grep-proved zero writes to `comprobantes_fiscales`/`comprobantes_disponibles` and
+   zero NCF allocation; rendered the document itself with `facturaNumero: null` and confirmed a
+   truly empty value (no literal "null", no placeholder, no fallback); independently mutated two
+   required fields it chose itself (`cedulaRnc`, `horaSalida`) to prove the builder wasn't globally
+   loosened. QA PASS, lead APPROVE.
+4. **Migrations 061/062 confirmed applied and correct.** `reserva_pasajeros` and
+   `reserva_ocupaciones` exist with exactly the designed columns; all 5 new `reservas` columns
+   present. First live confirmation ever — verification only, nothing shipped.
+5. **Occupancy prefill shipped, on the second try, after the human corrected the agent's own
+   inference twice, with real data, and was right both times.** The agent had recommended against
+   prefilling the voucher's occupancy editor, on two premises, both wrong: **(a)**
+   `reservas.habitaciones` is a trigger-owned SUM, so seeding it breaks multi-group cases —
+   dissolved once the correct source, the **per-line** `reserva_detalles.habitaciones`
+   (`scripts/023:15`, one occupancy group per service line), was used instead of the aggregate
+   column; it was in the agent's own investigation and it had anchored on the wrong column.
+   **(b)** `reserva_detalles.concepto` "in practice holds 'Servicio Principal'" — **this was an
+   inference from the form's default value, never an observation**, and the agent's own prior
+   investigation had explicitly marked `concepto`'s production values UNVERIFIED before the agent
+   reasoned from that inference as if it were fact. Live data: `concepto` holds
+   `"PRUEBA 1 DOBLE"`, `"PRUEBA 2 SENCILLA"` — later confirmed by a live query
+   (`reserva_detalles` id=104 `concepto="PRUEBA 1 DOBLE"` `descripcion="PRUEBA 1"`, id=105
+   `concepto="PRUEBA 2 SENCILLA"` `descripcion="PRUEBA 2"`); the reserva form's own placeholder is
+   literally *"Ej: Habitación Doble, Habitación Triple, Niños"* — the field was designed for this.
+   Shipped: prefill from `reserva_detalles`, one occupancy row per service line, `cantidad ←
+   habitaciones` (per line), `ocupacion ← concepto` verbatim, `categoria ← descripcion` verbatim,
+   only when nothing is already saved; a null source stays blank. Plus reserva totals surfaced next
+   to the inputs and non-blocking mismatch warnings. QA PASS after two send-backs, lead APPROVE.
+
+#### 2. Evidence / send-back log
+
+- **Task 2 (input guards), round 1 — FAKE-GREEN.** Already filed as `fake-green-tests`
+  anti-pattern #10 (a mutation that went RED for the wrong reason — a crashed, un-queued mock, not
+  the guard actually firing). No new filing this session; restated here for the day's timeline.
+- **TELEFONO hotfix, round 1 — zero regression guard on the exact outage line.** Already filed as
+  `fake-green-tests` anti-pattern #11 (a refuted "no RTL harness" excuse). No new filing this
+  session.
+- **Occupancy prefill, round 1 — the dev omitted the test-file diffs from their report "for
+  length."** HARD GATE violation ("paste the actual changed lines, no summaries-as-proof"). Lead:
+  *"The gate is about what the dev submits, not what QA can reconstruct after the fact."* Sent
+  back; diffs supplied in round 2.
+- **Occupancy prefill, round 2 — QA found the M4 gap relocated rather than closed**: the extracted
+  function is pinned by a test, but nothing forces the real caller to actually use it. Lead
+  APPROVED anyway, ruling consistency with two prior same-day acceptances and noting real closure
+  needs a component-test harness this repo lacks.
+- **FACTURA # optional — dev self-disclosed** that removing the `LOOKUP_FAILED` toast leaves all
+  593 tests green, because `proforma/page.tsx` has zero coverage. Disclosed honestly rather than
+  papered over. Lead accepted but **ELEVATED it to the next scoped task**, not generic backlog — it
+  is the one thing separating a silent technical failure from a normal state on a fiscal-adjacent
+  lookup.
+
+#### 3. Orchestration errors this session (recorded honestly)
+
+a) **Two dev agents ran concurrently on one uncommitted working tree.** A known, already-filed risk
+   (`~/Developer/CBrain/mistakes/environment-reliability-incidents.md`, "concurrent-agent scratch
+   contamination") — recurred, this time on the real working tree rather than just a scratch dir.
+   Both agents independently reported seeing the other's files change under them. QA's
+   contamination check found no actual corruption (full `git diff` read hunk-by-hunk across all 11
+   files, every named function verified), and lead ruled that substantive and sufficient — but the
+   risk was taken knowingly-in-hindsight and is logged as a **recurrence**.
+b) **The orchestrator omitted the rollback notes from the review packet handed to lead**, causing a
+   spurious send-back. Both dev reports HAD them; the orchestrator failed to relay them. Same
+   defect class as assertion-without-verification, one layer up: the reviewer was given an
+   incomplete evidence packet and ruled on the gap rather than the substance.
+c) **The orchestrator inferred production data from a form default and presented it as fact** (the
+   "Servicio Principal" claim in finding 5(b) above), when the underlying investigation had
+   explicitly marked it UNVERIFIED. The human corrected it with real data.
+
+#### 4. Rollback path
+
+No commit exists for this session's diffs; tree sits on `4d92173`. `git checkout --` the touched
+files (the voucher TELEFONO derivation path, `lib/document-generator.tsx`,
+`app/facturacion/proforma/page.tsx`, `app/facturacion/voucher/page.tsx`,
+`app/actions/documentos-actions.ts`, and their test files) returns the repo to `4d92173` exactly.
+No DB write was made by the agent — migrations `061`/`062`/`063` were applied by the human
+directly, before this session, and are **not** reverted by any repo-level rollback; that is a
+separate, human-controlled DB operation, out of scope here.
+
+#### 5. Backlog carried forward
+
+- **LOOKUP_FAILED toast coverage on `proforma/page.tsx`** — ELEVATED to next scoped task (lead's
+  explicit ruling), not generic backlog; the file currently has zero test coverage of any kind.
+- **The `information_schema`-vs-`lib/supabase.ts` interface reconciliation** — now strongly
+  justified by two more confirmed drift instances (below), still not done.
+- **File-size breach, grew this session:** `voucher/page.tsx` 1526 lines, `document-generator.tsx`
+  1840 lines, `documentos-actions.ts` ~1213 lines — all past the repo's ≤500-line rule; splits
+  remain their own scoped task, never bundled into a feature task.
+- **Call-site wiring gaps** — `derivarTelefonoHotel`, `PRODUCTOS_SELECT_COLUMNS`, and (new)
+  `resolverOcupacionesParaPrefill` are each pinned by a unit test but nothing verifies the real
+  caller actually uses them. Real closure needs a component-test harness this repo lacks.
+- **`.docx` independent verification** — QA could not open the binary; still unverified against the
+  rendered document.
+- **5 demo rows sitting in `comprobantes_fiscales`**, a tax-relevant table — human decision,
+  untouched this session.
+- **Client invoicing does not exist as a system** — the real project behind the FACTURA # question;
+  see ADR `0012-elibry-confirmacion-without-factura-numero`.
+- **Credentials pasted into a transcript need rotation** — human action, not yet done.
+- `productoId = 0` still untested; `debePrefillarOcupaciones` now uses `Boolean()` (done); the
+  `reservas`-load silent swallow (`page.tsx:244-257`) still unfixed; `lib/document-generator.tsx:78`
+  stale comment still names `suplidores.telefono`; `Suplidor.telefonos` still missing from the
+  shared `lib/supabase.ts` interface.
+
+**Not fixed, explicitly out of scope, must be surfaced again before any future sprint touches auth
+or RLS broadly:** HC-1 (no authentication, no RLS on ~29 pre-existing tables — ADR 0011) —
+unchanged by this session.
+
+---
+
+### 2026-08-03 — reserva-document-entry-points (T1–T8, uncommitted, on top of `8f00cdc`)
+
+**Plan:** `docs/plans/reserva-document-entry-points.md` · **Slug:** `reserva-document-entry-points`
+**Recovered mid-sprint**: the machine shut down after Task 3. T1–T3 were re-verified from the tree
+and the live DB rather than trusted; T4–T8 were completed in this session.
+
+#### 1. What shipped (user-facing)
+
+1. **PROFORMA/CONFIRMACIÓN and VOUCHER now keep SEPARATE passenger lists** on the same
+   `reserva_pasajeros` table, discriminated by a new `documento_destino` column (`'VOUCHER'` |
+   `'PROFORMA'`). Editing one document's passengers can no longer overwrite or delete the other's.
+2. **PROFORMA's passenger editor works like VOUCHER's** — it seeds `reservas.pasajeros` blank rows
+   when the reserva has no PROFORMA rows yet (min 1; `Number.isFinite`/`isInteger`, never
+   truthiness; a NAME is never fabricated), and a failed read now fires a destructive toast instead
+   of silently looking like "this reserva has no passengers".
+3. **Direct entry points**: "Generar Proforma" / "Generar Voucher" buttons on the
+   `/reservas/ver/[id]` header AND in each `/reservas/pendientes` row's action group (human chose
+   BOTH locations, 2026-08-03 — the plan had only specified `ver/[id]`). Each is a bare
+   `router.push` to `?reserva_id=<reservas.id>`; the destination pages auto-select that reserva
+   through their EXISTING handlers, so no generation validation is duplicated or bypassed.
+4. **The dead "Observación" textarea is gone** from PROFORMA's dialog — it never reached the
+   generated document (`observaciones` has always come from `reservas.nota_interna_reserva`, which
+   is unchanged at `proforma/page.tsx:564`).
+5. New `lib/deep-link-reserva.ts` (pure, node-tested). Both facturación pages gained the
+   `<Suspense>` boundary Next 14.2 requires for `useSearchParams()`.
+
+#### 2. Evidence
+
+- `npm run qa` (= `tsc --noEmit` → `eslint .` → `vitest run`): **27 files / 618 tests, exit 0**,
+  0 lint errors, 30 warnings (flat vs. baseline). Test count 604 → 618 (+9 proforma-page, +5
+  deep-link).
+- `npx next build`: **Compiled successfully**, no "useSearchParams() should be wrapped in a
+  suspense boundary" for `/facturacion/proforma` or `/facturacion/voucher`. Both prerender.
+- **Mutations actually run and shown RED, then restored:** `pasajeros || 1` in place of the
+  finite/integer test (RED on the `-2` case); "return blanks on failure" in place of `null` (RED on
+  the failed-read case).
+- **Live-DB isolation proof (T8), run against the real Supabase project on reserva 7 with the REAL
+  server actions and NO mocks** — the thing an in-memory mock structurally cannot prove:
+  - Baseline: `Johan Contreras`(id 8)/VOUCHER, `Pedro`(id 9)/VOUCHER.
+  - After `guardarPasajerosReservaAction(7, [CARLA C, DIEGO D], …, "PROFORMA")`: both VOUCHER rows
+    present **with their original ids 8 and 9** — not deleted-and-reinserted, physically untouched.
+  - **The UNIQUE swap is confirmed applied**: `orden = 1` exists simultaneously for VOUCHER and
+    PROFORMA on one reserva — unreachable under the old `UNIQUE (reserva_id, orden)` (23505).
+  - Reverse direction also proven: a VOUCHER re-save left both PROFORMA rows intact.
+  - Invalid `documento_destino` (`"FACTURA"`, `""`) rejected on BOTH actions against the live DB,
+    with zero row change before/after.
+  - Cleanup ran; reserva 7 restored to its exact original content (VOUCHER-only, same names/order).
+    Surrogate ids advanced 8/9 → 16/17 **because the test itself re-saved the VOUCHER list** —
+    delete-then-insert is the pre-existing `reemplazarConjuntoConRestauracion` contract, unchanged
+    by this sprint.
+- Route smoke test on `next dev`: `/reservas/pendientes`, `/reservas/ver/7`,
+  `/facturacion/proforma?reserva_id=7`, `/facturacion/voucher?reserva_id=7` and a bogus
+  `?reserva_id=99999999` all return 200. Both `data-testid="btn-generar-proforma"` and
+  `btn-generar-voucher` are present in the shipped client chunks for BOTH reserva pages;
+  `"Ingrese observaciones adicionales"` occurs **0** times in the proforma chunk.
+
+#### 3. The honest part
+
+- **The interactive click-through (plan steps M2/M3/M7/M9/M10/M12) was NOT performed** — no browser
+  automation was connected in this session. What is proven is: the routes serve 200, the buttons
+  and the deep-link param exist in the real client bundles, and the underlying data behaviour is
+  verified live. What is NOT independently observed: the dialog visibly opening pre-filled, the
+  list visibly filtering to the `codigo`, and the "reserva no encontrada" toast actually appearing.
+  Those remain human click-through steps.
+- **Deliberate deviation from the plan, one line**: `voucher/page.tsx`'s `loading` state now starts
+  `true` instead of `false`. The plan's "run the effect only when `loading === false`" gate is
+  wrong on that page as written — `loading` started `false`, so the deep-link effect would have
+  observed an empty `reservas` array on first render and reported a perfectly valid id as
+  "no encontrada". `fetchReservas` always resolves it in its `finally`.
+- **Scope deviation, human-approved**: `app/reservas/pendientes/page.tsx` is a 10th file, outside
+  the plan's 9-file seam map. Added because the human explicitly chose BOTH entry-point locations.
+- **A pre-existing repo condition was found and verified, not assumed**: after any `next build`,
+  `tsc --noEmit` fails on `.next/types` for every page that exports a helper. Bisected by stashing
+  the entire sprint and rebuilding — the SAME errors appear at baseline for `app/crm/casos/page.tsx`
+  and `app/facturacion/voucher/page.tsx`, files this sprint did not create the exports in. `npm run
+  qa` is green on a clean `.next`. This is the repo's extract-a-pure-function-from-a-page test
+  pattern colliding with Next's generated page types — pre-existing, now one page worse (proforma
+  joins the list). **New backlog item.**
+- No RLS statement was executed at any point; migration 064 (applied by the human before this
+  session) contains none. Access to `reserva_pasajeros` remains exclusively through the
+  service-role `"use server"` module. HC-1 (no auth, no RLS on ~29 pre-existing tables, ADR 0011)
+  is **unchanged** — this sprint did not make Elibry more secure.
+
+#### 4. Rollback path (nothing committed; tree sits on `8f00cdc`)
+
+`git checkout -- app/actions/documentos-actions.ts app/facturacion/proforma/page.tsx
+app/facturacion/voucher/page.tsx app/reservas/pendientes/page.tsx "app/reservas/ver/[id]/page.tsx"
+tests/documentos-actions.test.ts MEMORY/project_sprint_state.md && rm lib/deep-link-reserva.ts
+tests/deep-link-reserva.test.ts tests/proforma-page.test.ts`. **The DB migration is NOT reverted by
+this** — `documento_destino` and the swapped UNIQUE constraint stay applied; the column's
+`DEFAULT 'VOUCHER'` keeps the reverted code working unchanged. The migration's own rollback block
+(`scripts/064`) deletes PROFORMA passenger rows and is a separate, human-controlled operation.
+
+#### 5. Backlog carried forward
+
+- **`.next/types` vs. page-exported helpers** (new, above) — decide between a `tsconfig` exclude, a
+  `qa` script that cleans `.next` first, or moving page helpers into `lib/`.
+- **Interactive click-through of M2/M3/M7/M9/M10/M12** still owed by a human.
+- **File-size breach, worse again**: `voucher/page.tsx` ~1592, `proforma/page.tsx` ~1010,
+  `documentos-actions.ts` ~1275, `reservas/ver/[id]` ~955, `tests/documentos-actions.test.ts` ~2300
+  — all past the ≤500-line rule. Splits remain their own scoped tasks (B-1/B-9), never bundled.
+  `lib/deep-link-reserva.ts` and the two exported proforma seeders push logic the other way.
+- **No cap on seeded passenger rows** — a pathologically large `reservas.pasajeros` renders that
+  many inputs. Accepted, logged; inventing a cap is an unspecified product decision.
+- Everything carried forward from the 2026-07-28 entries (LOOKUP_FAILED toast coverage, the
+  `information_schema`-vs-`lib/supabase.ts` reconciliation, `.docx` verification, the 5 demo rows
+  in `comprobantes_fiscales`, client invoicing as an un-started project, **credential rotation
+  still not done**) is **unchanged** by this sprint.
 
 ---
 
@@ -261,4 +541,11 @@ recibo-escape-and-input-guards entry above for the current uncommitted-diff stat
 the two hard-blocked fiscal documents pending scripts/061+062, and the
 assertion-ordering fragility backlog item at tests/documentos-actions.test.ts:473-481.
 See the 2026-07-28 VOUCHER TELEFONO hotfix entry above for the schema-drift finding
-(scripts/ is not the schema) and the lib/supabase.ts interface-vs-schema audit candidate.)_
+(scripts/ is not the schema) and the lib/supabase.ts interface-vs-schema audit candidate.
+See the 2026-07-28 Live DB verification session entry above for R3's final resolution
+(no client-invoice linkage exists anywhere in the database; client invoicing is a real,
+un-started project), ADR 0012 (FACTURA # optional on CONFIRMACIÓN), schema-drift
+instances 3 & 4 (`productos.telefonos_json`/`emails_json` in zero migrations; the
+definitive `comprobantes_fiscales` shape), the concurrent-agents-on-one-tree
+recurrence, and the LOOKUP_FAILED toast task explicitly elevated ahead of generic
+backlog.)_

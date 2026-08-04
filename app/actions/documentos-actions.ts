@@ -34,6 +34,17 @@ export type TipoPax = "ADULTO" | "NINO" | "INFANTE"
 
 const TIPOS_PAX_VALIDOS: TipoPax[] = ["ADULTO", "NINO", "INFANTE"]
 
+/**
+ * Which document this reserva_pasajeros row belongs to — VOUCHER and
+ * PROFORMA keep SEPARATE passenger lists on the same table (Finding A/C,
+ * docs/plans/reserva-document-entry-points.md §1/§5). NOT the same column as
+ * PasajeroInput.documento below, which is the passenger's own cédula/
+ * pasaporte — the two are unrelated and must never be conflated.
+ */
+export type DocumentoDestino = "VOUCHER" | "PROFORMA"
+
+const DOCUMENTOS_DESTINO_VALIDOS: DocumentoDestino[] = ["VOUCHER", "PROFORMA"]
+
 export interface PasajeroInput {
   orden: number
   nombre_completo: string
@@ -139,16 +150,29 @@ function validateOcupacionesInput(ocupaciones: OcupacionInput[]): string | null 
 }
 
 /**
- * Returns the passengers of one reserva, ordered by `orden` — the render
- * order CONFIRMACIÓN's "1) 2) 3)…" section and VOUCHER both depend on.
+ * Returns the passengers of one reserva's ONE document list (VOUCHER or
+ * PROFORMA — required, no default; see DocumentoDestino), ordered by
+ * `orden` — the render order CONFIRMACIÓN's "1) 2) 3)…" section and VOUCHER
+ * both depend on.
  */
-export async function getPasajerosReservaAction(reservaId: number) {
+export async function getPasajerosReservaAction(reservaId: number, documentoDestino: DocumentoDestino) {
   try {
+    // Block-never-default (mistakes/stockin-zero-price): an unrecognized
+    // documento_destino is rejected here, BEFORE any .from() call — never
+    // coerced to "VOUCHER".
+    if (!DOCUMENTOS_DESTINO_VALIDOS.includes(documentoDestino)) {
+      return {
+        success: false,
+        error: "documento_destino: debe ser VOUCHER o PROFORMA (no se asume un valor por defecto)",
+      }
+    }
+
     const supabase = createSupabaseServerClient()
     const { data, error } = await supabase
       .from("reserva_pasajeros")
       .select("*")
       .eq("reserva_id", reservaId)
+      .eq("documento_destino", documentoDestino)
       .order("orden", { ascending: true })
 
     if (error) return { success: false, error: error.message }
@@ -196,21 +220,36 @@ type ResultadoReemplazoConRestauracion<T> =
  * re-insert of that captured set. See ResultadoReemplazoConRestauracion for
  * the three outcomes this can produce; a caller must check `restored`
  * whenever `success` is false, never assume the old data survived.
+ *
+ * `filtroAdicional` (Finding C, docs/plans/reserva-document-entry-points.md
+ * §1/§5): an OPTIONAL extra equality filter applied to BOTH the
+ * capture-SELECT and the DELETE, via the `construirConsulta` helper below so
+ * the chain is built exactly once per query. Only the passenger call site
+ * (guardarPasajerosReservaAction) passes it, scoping the capture/delete to
+ * one document's rows so a PROFORMA save can never delete VOUCHER's rows (or
+ * vice versa). When `undefined` — the occupancy call site
+ * (guardarOcupacionesReservaAction) — the emitted chain is IDENTICAL to
+ * before this parameter existed: `.eq("reserva_id", reservaId)` only. Rooms
+ * are reserva-level, not document-level, so the occupancy path must never
+ * pass this filter.
  */
 async function reemplazarConjuntoConRestauracion<T>(
   supabase: ReturnType<typeof createSupabaseServerClient>,
   tabla: "reserva_pasajeros" | "reserva_ocupaciones",
   reservaId: number,
   filasNuevas: Record<string, unknown>[],
+  filtroAdicional?: { columna: string; valor: string },
 ): Promise<ResultadoReemplazoConRestauracion<T>> {
-  const { data: filasOriginales, error: selectError } = await supabase
-    .from(tabla)
-    .select("*")
-    .eq("reserva_id", reservaId)
+  const construirConsulta = (builder: any) => {
+    const conReserva = builder.eq("reserva_id", reservaId)
+    return filtroAdicional ? conReserva.eq(filtroAdicional.columna, filtroAdicional.valor) : conReserva
+  }
+
+  const { data: filasOriginales, error: selectError } = await construirConsulta(supabase.from(tabla).select("*"))
 
   if (selectError) return { success: false, error: selectError.message }
 
-  const { error: deleteError } = await supabase.from(tabla).delete().eq("reserva_id", reservaId)
+  const { error: deleteError } = await construirConsulta(supabase.from(tabla).delete())
 
   if (deleteError) return { success: false, error: deleteError.message }
 
@@ -264,8 +303,19 @@ export async function guardarPasajerosReservaAction(
   reservaId: number,
   pasajeros: PasajeroInput[],
   registradoPor: string,
+  documentoDestino: DocumentoDestino,
 ) {
   try {
+    // Block-never-default (mistakes/stockin-zero-price): an unrecognized
+    // documento_destino is rejected here, BEFORE any .from() call — never
+    // coerced to "VOUCHER".
+    if (!DOCUMENTOS_DESTINO_VALIDOS.includes(documentoDestino)) {
+      return {
+        success: false,
+        error: "documento_destino: debe ser VOUCHER o PROFORMA (no se asume un valor por defecto)",
+      }
+    }
+
     const validationError = validatePasajerosInput(pasajeros)
     if (validationError) return { success: false, error: validationError }
 
@@ -307,6 +357,7 @@ export async function guardarPasajerosReservaAction(
 
     const filas = pasajeros.map((pasajero) => ({
       reserva_id: reservaId,
+      documento_destino: documentoDestino,
       ocupacion_id: pasajero.ocupacion_id ?? null,
       orden: pasajero.orden,
       nombre_completo: pasajero.nombre_completo.trim(),
@@ -315,7 +366,10 @@ export async function guardarPasajerosReservaAction(
       registrado_por: registradoPor,
     }))
 
-    return await reemplazarConjuntoConRestauracion(supabase, "reserva_pasajeros", reservaId, filas)
+    return await reemplazarConjuntoConRestauracion(supabase, "reserva_pasajeros", reservaId, filas, {
+      columna: "documento_destino",
+      valor: documentoDestino,
+    })
   } catch (error: any) {
     return { success: false, error: error?.message || "Error desconocido" }
   }

@@ -21,6 +21,8 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  FileText,
+  Receipt,
 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { obtenerRegistrosCompletos } from "@/lib/provisional-system"
@@ -1002,6 +1004,33 @@ export default function ReservasPendientesPage() {
                                   <DollarSign className="w-4 h-4" />
                                 </Button>
                               )}
+                              {/*
+                                Direct entry points into PROFORMA / VOUCHER for
+                                THIS reserva — bare navigation, no validation and
+                                no fetch. The destination pages own generation
+                                validation, so nothing is bypassed. Always
+                                rendered, unlike the payment button.
+                              */}
+                              <Button
+                                data-testid="btn-generar-proforma"
+                                variant="outline"
+                                size="sm"
+                                title="Generar Proforma"
+                                onClick={() => router.push(`/facturacion/proforma?reserva_id=${reserva.id}`)}
+                                className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                data-testid="btn-generar-voucher"
+                                variant="outline"
+                                size="sm"
+                                title="Generar Voucher"
+                                onClick={() => router.push(`/facturacion/voucher?reserva_id=${reserva.id}`)}
+                                className="border-purple-200 text-purple-600 hover:bg-purple-50"
+                              >
+                                <Receipt className="w-4 h-4" />
+                              </Button>
                             </div>
                           </TableCell>
                           <TableCell className="font-mono">{reserva.id}</TableCell>

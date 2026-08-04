@@ -23,6 +23,7 @@ import {
   Printer,
   File,
   ExternalLink,
+  Receipt,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
@@ -351,6 +352,31 @@ export default function VerReservaPage() {
           </div>
           <div className="flex items-center space-x-4">
             <TimeFormatToggle onChange={setIs24HourFormat} />
+            {/*
+              Direct entry points into the two documents for THIS reserva.
+              Each is a bare navigation — no validation, no data fetch, no
+              state. The destination pages own generation validation exactly as
+              they do when the operator selects the reserva by hand, so
+              arriving here bypasses nothing.
+            */}
+            <Button
+              data-testid="btn-generar-proforma"
+              variant="outline"
+              onClick={() => router.push(`/facturacion/proforma?reserva_id=${reserva.id}`)}
+              className="border-blue-200 text-blue-600 hover:bg-blue-50"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generar Proforma
+            </Button>
+            <Button
+              data-testid="btn-generar-voucher"
+              variant="outline"
+              onClick={() => router.push(`/facturacion/voucher?reserva_id=${reserva.id}`)}
+              className="border-purple-200 text-purple-600 hover:bg-purple-50"
+            >
+              <Receipt className="w-4 h-4 mr-2" />
+              Generar Voucher
+            </Button>
             <Button
               onClick={() => router.push(`/reservas/editar/${reserva.id}`)}
               className="bg-[#3399cc] hover:bg-[#2980b9] text-white"

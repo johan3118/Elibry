@@ -89,7 +89,7 @@ describe("getPasajerosReservaAction", () => {
     ]
     queueFromResults({ data: fakeRows, error: null })
 
-    const result = await getPasajerosReservaAction(42)
+    const result = await getPasajerosReservaAction(42, "VOUCHER")
 
     expect(result.success).toBe(true)
     expect((result as any).data).toEqual(fakeRows)
@@ -100,16 +100,43 @@ describe("getPasajerosReservaAction", () => {
     const builders = [makeQueryBuilder({ data: [], error: null })]
     mockFrom.mockImplementation(() => builders[0])
 
-    await getPasajerosReservaAction(42)
+    await getPasajerosReservaAction(42, "VOUCHER")
 
     expect(builders[0].eq).toHaveBeenCalledWith("reserva_id", 42)
     expect(builders[0].order).toHaveBeenCalledWith("orden", { ascending: true })
   })
 
+  // (T3 §8.2 #1) documentoDestino scoping — PROFORMA. Mutation: drop the
+  // second .eq("documento_destino", …) call from the action → this goes red.
+  it("PROFORMA — filters on BOTH reserva_id AND documento_destino, still ordered by orden ascending", async () => {
+    const builder = makeQueryBuilder({ data: [], error: null })
+    mockFrom.mockImplementation(() => builder)
+
+    await getPasajerosReservaAction(42, "PROFORMA")
+
+    expect(builder.eq).toHaveBeenCalledWith("reserva_id", 42)
+    expect(builder.eq).toHaveBeenCalledWith("documento_destino", "PROFORMA")
+    expect(builder.order).toHaveBeenCalledWith("orden", { ascending: true })
+  })
+
+  // (T3 §8.2 #2) documentoDestino scoping — VOUCHER. Mutation: hardcode the
+  // filter to "PROFORMA" regardless of the argument → this goes red (this
+  // test asks for "VOUCHER" and would observe "PROFORMA" instead).
+  it("VOUCHER — filters on BOTH reserva_id AND documento_destino, still ordered by orden ascending", async () => {
+    const builder = makeQueryBuilder({ data: [], error: null })
+    mockFrom.mockImplementation(() => builder)
+
+    await getPasajerosReservaAction(42, "VOUCHER")
+
+    expect(builder.eq).toHaveBeenCalledWith("reserva_id", 42)
+    expect(builder.eq).toHaveBeenCalledWith("documento_destino", "VOUCHER")
+    expect(builder.order).toHaveBeenCalledWith("orden", { ascending: true })
+  })
+
   it("error path — returns success: false with the Supabase error message", async () => {
     queueFromResults({ data: null, error: { message: "connection refused" } })
 
-    const result = await getPasajerosReservaAction(42)
+    const result = await getPasajerosReservaAction(42, "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toBe("connection refused")
@@ -120,10 +147,73 @@ describe("getPasajerosReservaAction", () => {
       throw new Error("boom")
     })
 
-    const result = await getPasajerosReservaAction(42)
+    const result = await getPasajerosReservaAction(42, "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toBe("boom")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (T3 §8.2 #6) Block-never-default (mistakes/stockin-zero-price): an unknown
+// documento_destino is a public-HTTP-endpoint input, not a compile-time-only
+// concern — TypeScript is bypassed here via `as any` to prove the RUNTIME
+// guard fires. Mutation for every test below: coerce the unrecognized value
+// to "VOUCHER" instead of rejecting it → every assertion here goes red
+// (mockFrom WOULD be called, and success would flip to true).
+describe("documento_destino — block-never-default validation (BOTH passenger actions)", () => {
+  it("getPasajerosReservaAction rejects an unrecognized documentoDestino BEFORE any .from() call", async () => {
+    const result = await getPasajerosReservaAction(42, "FACTURA" as any)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("documento_destino")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("getPasajerosReservaAction rejects an empty-string documentoDestino", async () => {
+    const result = await getPasajerosReservaAction(42, "" as any)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("documento_destino")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("getPasajerosReservaAction rejects an undefined documentoDestino reaching at runtime (TS bypassed via cast)", async () => {
+    const result = await getPasajerosReservaAction(42, undefined as any)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("documento_destino")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("guardarPasajerosReservaAction rejects an unrecognized documentoDestino BEFORE any .from() call", async () => {
+    const pasajeros: PasajeroInput[] = [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }]
+
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "FACTURA" as any)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("documento_destino")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("guardarPasajerosReservaAction rejects an empty-string documentoDestino", async () => {
+    const pasajeros: PasajeroInput[] = [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }]
+
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "" as any)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("documento_destino")
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it("guardarPasajerosReservaAction rejects an undefined documentoDestino reaching at runtime (TS bypassed via cast)", async () => {
+    const pasajeros: PasajeroInput[] = [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }]
+
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", undefined as any)
+
+    expect(result.success).toBe(false)
+    expect((result as any).error).toContain("documento_destino")
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 })
 
@@ -132,7 +222,7 @@ describe("guardarPasajerosReservaAction — block-never-default validation", () 
   it("rejects a blank nombre_completo BEFORE touching the DB", async () => {
     const pasajeros: PasajeroInput[] = [{ orden: 1, nombre_completo: "   ", tipo_pax: "ADULTO" }]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("nombre_completo")
@@ -142,7 +232,7 @@ describe("guardarPasajerosReservaAction — block-never-default validation", () 
   it("rejects an empty-string nombre_completo", async () => {
     const pasajeros: PasajeroInput[] = [{ orden: 1, nombre_completo: "", tipo_pax: "ADULTO" }]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("nombre_completo")
@@ -152,7 +242,7 @@ describe("guardarPasajerosReservaAction — block-never-default validation", () 
   it("rejects a missing tipo_pax — never defaults to ADULTO", async () => {
     const pasajeros = [{ orden: 1, nombre_completo: "Ana Perez" }] as unknown as PasajeroInput[]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("tipo_pax")
@@ -164,7 +254,7 @@ describe("guardarPasajerosReservaAction — block-never-default validation", () 
       { orden: 1, nombre_completo: "Ana Perez", tipo_pax: "SENIOR" },
     ] as unknown as PasajeroInput[]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("tipo_pax")
@@ -176,7 +266,7 @@ describe("guardarPasajerosReservaAction — block-never-default validation", () 
       { nombre_completo: "Ana Perez", tipo_pax: "ADULTO" },
     ] as unknown as PasajeroInput[]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("orden")
@@ -189,7 +279,7 @@ describe("guardarPasajerosReservaAction — block-never-default validation", () 
       { orden: 1, nombre_completo: "Luis Perez", tipo_pax: "ADULTO" },
     ]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("orden")
@@ -212,7 +302,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
     })
     queueBuilders(selectCaptureBuilder, deleteBuilder, insertBuilder)
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(true)
     expect(selectCaptureBuilder.select).toHaveBeenCalledWith("*")
@@ -230,7 +320,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
     const deleteBuilder = makeQueryBuilder({ data: null, error: null })
     queueBuilders(selectCaptureBuilder, deleteBuilder)
 
-    const result = await guardarPasajerosReservaAction(42, [], "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, [], "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(true)
     expect((result as any).data).toEqual([])
@@ -244,6 +334,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
       42,
       [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }],
       "user@test.com",
+      "VOUCHER",
     )
 
     expect(result.success).toBe(false)
@@ -260,6 +351,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
       42,
       [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }],
       "user@test.com",
+      "VOUCHER",
     )
 
     expect(result.success).toBe(false)
@@ -276,6 +368,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
       42,
       [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }],
       "user@test.com",
+      "VOUCHER",
     )
 
     expect(result.success).toBe(false)
@@ -297,7 +390,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
     const restoreInsertBuilder = makeQueryBuilder({ data: filasOriginales, error: null })
     queueBuilders(selectCaptureBuilder, deleteBuilder, insertBuilder, restoreInsertBuilder)
 
-    const result = await guardarPasajerosReservaAction(42, pasajerosNuevos, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajerosNuevos, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toBe("insert failed")
@@ -325,7 +418,7 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
     const restoreInsertBuilder = makeQueryBuilder({ data: null, error: { message: "restore insert failed too" } })
     queueBuilders(selectCaptureBuilder, deleteBuilder, insertBuilder, restoreInsertBuilder)
 
-    const result = await guardarPasajerosReservaAction(42, pasajerosNuevos, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajerosNuevos, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toBe("insert failed")
@@ -335,6 +428,55 @@ describe("guardarPasajerosReservaAction — replace-all write path", () => {
     expect((result as any).restored).toBe(false)
     expect((result as any).restoreError).toBe("restore insert failed too")
     expect(restoreInsertBuilder.insert).toHaveBeenCalledWith(filasOriginales)
+  })
+
+  // (T3 §8.2 #3) Every row written carries documento_destino. Mutation: omit
+  // `documento_destino` from the `filas` map in guardarPasajerosReservaAction
+  // → this goes red (the objectContaining check no longer matches).
+  it("every row written to reserva_pasajeros carries documento_destino: 'PROFORMA'", async () => {
+    const pasajeros: PasajeroInput[] = [
+      { orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" },
+      { orden: 2, nombre_completo: "Luis Perez", tipo_pax: "NINO" },
+    ]
+
+    const selectCaptureBuilder = makeQueryBuilder({ data: [], error: null })
+    const deleteBuilder = makeQueryBuilder({ data: null, error: null })
+    const insertBuilder = makeQueryBuilder({
+      data: pasajeros.map((p, i) => ({ id: i + 1, reserva_id: 42, documento_destino: "PROFORMA", ...p })),
+      error: null,
+    })
+    queueBuilders(selectCaptureBuilder, deleteBuilder, insertBuilder)
+
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "PROFORMA")
+
+    expect(result.success).toBe(true)
+    expect(insertBuilder.insert).toHaveBeenCalledWith([
+      expect.objectContaining({ documento_destino: "PROFORMA", orden: 1, nombre_completo: "Ana Perez" }),
+      expect.objectContaining({ documento_destino: "PROFORMA", orden: 2, nombre_completo: "Luis Perez" }),
+    ])
+  })
+
+  // (T3 §8.2 #4 — Finding C isolation) The capture-SELECT AND the DELETE
+  // must BOTH carry the documento_destino filter, or a PROFORMA save deletes
+  // VOUCHER's rows (or vice versa). Mutation: remove `filtroAdicional` from
+  // the DELETE call inside reemplazarConjuntoConRestauracion (leave it only
+  // on the capture-SELECT) → this goes red.
+  it("isolation — the passenger capture-SELECT AND the DELETE builders BOTH receive reserva_id AND documento_destino", async () => {
+    const pasajeros: PasajeroInput[] = [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO" }]
+    const selectCaptureBuilder = makeQueryBuilder({ data: [], error: null })
+    const deleteBuilder = makeQueryBuilder({ data: null, error: null })
+    const insertBuilder = makeQueryBuilder({
+      data: [{ id: 1, reserva_id: 42, documento_destino: "PROFORMA", ...pasajeros[0] }],
+      error: null,
+    })
+    queueBuilders(selectCaptureBuilder, deleteBuilder, insertBuilder)
+
+    await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "PROFORMA")
+
+    expect(selectCaptureBuilder.eq).toHaveBeenCalledWith("reserva_id", 42)
+    expect(selectCaptureBuilder.eq).toHaveBeenCalledWith("documento_destino", "PROFORMA")
+    expect(deleteBuilder.eq).toHaveBeenCalledWith("reserva_id", 42)
+    expect(deleteBuilder.eq).toHaveBeenCalledWith("documento_destino", "PROFORMA")
   })
 })
 
@@ -348,7 +490,7 @@ describe("guardarPasajerosReservaAction — composite FK structural guard", () =
       { orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO", ocupacion_id: 999 },
     ]
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(false)
     expect((result as any).error).toContain("ocupacion_id")
@@ -372,7 +514,7 @@ describe("guardarPasajerosReservaAction — composite FK structural guard", () =
     })
     queueBuilders(ocupacionesBuilder, selectCaptureBuilder, deleteBuilder, insertBuilder)
 
-    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com")
+    const result = await guardarPasajerosReservaAction(42, pasajeros, "user@test.com", "VOUCHER")
 
     expect(result.success).toBe(true)
     expect(insertBuilder.insert).toHaveBeenCalledWith([
@@ -394,6 +536,7 @@ describe("guardarPasajerosReservaAction — composite FK structural guard", () =
       42,
       [{ orden: 1, nombre_completo: "Ana Perez", tipo_pax: "ADULTO", ocupacion_id: null }],
       "user@test.com",
+      "VOUCHER",
     )
 
     expect(result.success).toBe(true)
@@ -764,6 +907,47 @@ describe("guardarOcupacionesReservaAction — replace-all write path", () => {
     expect((result as any).restored).toBe(false)
     expect((result as any).restoreError).toBe("restore insert failed too")
     expect(restoreInsertBuilder.insert).toHaveBeenCalledWith(filasOriginales)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (T3 §8.2 #5 — THE test that protects the live VOUCHER flow) Finding C's
+// `filtroAdicional` on reemplazarConjuntoConRestauracion is OPTIONAL and is
+// passed ONLY by the passenger call site. The occupancy call site
+// (guardarOcupacionesReservaAction) must keep emitting the EXACT SAME chain
+// as before this parameter existed: `.eq("reserva_id", id)` and nothing
+// else, on BOTH the capture-SELECT and the DELETE — rooms are reserva-level,
+// not document-level. Mutation: pass any filtroAdicional on the occupancy
+// path (e.g. scope it to a hardcoded column) → the `toHaveBeenCalledTimes(1)`
+// assertions below go red (a second .eq call would push the count to 2).
+describe("guardarOcupacionesReservaAction — occupancy path stays byte-identical (Finding C non-regression)", () => {
+  it("the reserva_ocupaciones capture-SELECT and DELETE builders EACH receive EXACTLY ONE .eq call, ('reserva_id', id)", async () => {
+    const pasajerosCaptureBuilder = makeQueryBuilder({ data: [], error: null })
+    const ocupacionesAnterioresCaptureBuilder = makeQueryBuilder({ data: [], error: null })
+    const selectCaptureBuilder = makeQueryBuilder({ data: [], error: null })
+    const deleteBuilder = makeQueryBuilder({ data: null, error: null })
+    const insertBuilder = makeQueryBuilder({
+      data: [{ id: 1, reserva_id: 42, orden: 1, cantidad: 2, ocupacion: "DOBLE", categoria: "Suite" }],
+      error: null,
+    })
+    queueBuilders(
+      pasajerosCaptureBuilder,
+      ocupacionesAnterioresCaptureBuilder,
+      selectCaptureBuilder,
+      deleteBuilder,
+      insertBuilder,
+    )
+
+    await guardarOcupacionesReservaAction(
+      42,
+      [{ orden: 1, cantidad: 2, ocupacion: "DOBLE", categoria: "Suite" }],
+      "user@test.com",
+    )
+
+    expect(selectCaptureBuilder.eq).toHaveBeenCalledTimes(1)
+    expect(selectCaptureBuilder.eq).toHaveBeenCalledWith("reserva_id", 42)
+    expect(deleteBuilder.eq).toHaveBeenCalledTimes(1)
+    expect(deleteBuilder.eq).toHaveBeenCalledWith("reserva_id", 42)
   })
 })
 
@@ -2217,7 +2401,7 @@ describe("T12 AC-4 — occupancy-group deletion round-trip via voucher actions",
     })
     mockFrom.mockImplementation(() => pasajerosLuegoBuilder)
 
-    const lecturaLuego = await getPasajerosReservaAction(reservaId)
+    const lecturaLuego = await getPasajerosReservaAction(reservaId, "VOUCHER")
 
     expect(lecturaLuego.success).toBe(true)
     const filasLuego = (lecturaLuego as any).data as any[]

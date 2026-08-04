@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, Suspense } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -18,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { FileText, Search, Eye, Download, Calendar, User, Package, Edit, X, Plus, ArrowLeft } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/lib/user-context"
@@ -32,6 +31,7 @@ import {
   type PasajeroConfirmacion,
 } from "@/lib/confirmacion-data"
 import type { ReservaBalanceInput } from "@/lib/finance"
+import { resolverReservaDeepLink } from "@/lib/deep-link-reserva"
 import {
   getPasajerosReservaAction,
   guardarPasajerosReservaAction,
@@ -110,10 +110,70 @@ interface Pago {
  * A single passenger row in the "Editar" dialog — the REAL, persisted-
  * passenger editor required by T8 AC-5.
  */
-interface EditablePasajero {
+export interface EditablePasajero {
   nombreCompleto: string
   tipoPax: TipoPax
   ocupacionId: number | null
+}
+
+/**
+ * How many BLANK passenger rows PROFORMA's editor opens with when this
+ * reserva has no PROFORMA passenger rows saved yet (the normal state right
+ * after migration 064, since every pre-existing row was tagged 'VOUCHER').
+ *
+ * Block-never-default (mistakes/stockin-zero-price), applied twice:
+ *  - the count is tested with Number.isFinite/Number.isInteger, NEVER
+ *    truthiness — `pasajeros || 1` would silently turn 2.5 into 2.5 rows and
+ *    NaN into 1 by accident rather than by rule;
+ *  - a passenger NAME is never fabricated. Every seeded row is `""`, so the
+ *    operator types the real names and buildConfirmacionData still blocks on
+ *    a genuinely empty list.
+ *
+ * `null` / `undefined` / `0` / negative / non-integer / `NaN` → exactly 1 row
+ * (the ruled minimum — the editor is never rendered with zero rows).
+ */
+export function filasBlancasParaPasajeros(pasajerosReserva: number | null | undefined): EditablePasajero[] {
+  const cantidad =
+    pasajerosReserva != null &&
+    Number.isFinite(pasajerosReserva) &&
+    Number.isInteger(pasajerosReserva) &&
+    pasajerosReserva >= 1
+      ? pasajerosReserva
+      : 1
+
+  return Array.from({ length: cantidad }, () => ({
+    nombreCompleto: "",
+    tipoPax: "ADULTO" as TipoPax,
+    ocupacionId: null,
+  }))
+}
+
+/**
+ * Decides what PROFORMA's passenger editor shows when the dialog opens.
+ *
+ *  - persisted PROFORMA rows exist → those rows, verbatim, in `orden` order;
+ *  - the fetch succeeded but the list is empty → `reservas.pasajeros` blank
+ *    rows (the seeding rule above);
+ *  - the fetch FAILED → `null`, meaning "no seeding decision can be made".
+ *    The caller must surface a destructive toast and leave the pre-set single
+ *    blank row — a failed read is never allowed to look like an empty list.
+ */
+export function resolverPasajerosParaEditor(
+  resultado: { success: boolean; data?: any[] | null },
+  pasajerosReserva: number | null | undefined,
+): EditablePasajero[] | null {
+  if (!resultado.success) return null
+
+  const filas = resultado.data
+  if (filas && filas.length > 0) {
+    return filas.map((p: any) => ({
+      nombreCompleto: p.nombre_completo,
+      tipoPax: p.tipo_pax,
+      ocupacionId: p.ocupacion_id ?? null,
+    }))
+  }
+
+  return filasBlancasParaPasajeros(pasajerosReserva)
 }
 
 // T9 (docs/plans/geb-documents-real-data.md): EditableProformaData used to
@@ -130,11 +190,11 @@ interface EditablePasajero {
 // template (T6b), already live on this page's only generation path since T8.
 interface EditableProformaData {
   pasajeros: EditablePasajero[]
-  observacion: string
 }
 
-export default function FacturacionProformaPage() {
+function FacturacionProformaPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("todos")
   const [reservas, setReservas] = useState<Reserva[]>([])
@@ -147,7 +207,6 @@ export default function FacturacionProformaPage() {
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null)
   const [editableData, setEditableData] = useState<EditableProformaData>({
     pasajeros: [{ nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }],
-    observacion: "",
   })
 
   const supabase = createClient()
@@ -277,25 +336,67 @@ export default function FacturacionProformaPage() {
     setSelectedReserva(reserva)
     setEditableData({
       pasajeros: [{ nombreCompleto: "", tipoPax: "ADULTO", ocupacionId: null }],
-      observacion: reserva.nota_interna_reserva || "",
     })
     setEditDialogOpen(true)
 
     // AC-5: prefill the passenger editor with the REAL, already-persisted
-    // reserva_pasajeros rows (T2), so the dialog edits reality rather than a
-    // blank slate every time.
-    const pasajerosResultado = await getPasajerosReservaAction(reserva.id)
-    if (pasajerosResultado.success && pasajerosResultado.data && pasajerosResultado.data.length > 0) {
-      setEditableData((prev) => ({
-        ...prev,
-        pasajeros: pasajerosResultado.data.map((p: any) => ({
-          nombreCompleto: p.nombre_completo,
-          tipoPax: p.tipo_pax,
-          ocupacionId: p.ocupacion_id ?? null,
-        })),
-      }))
+    // reserva_pasajeros rows (T2) of THIS document ('PROFORMA' — never
+    // VOUCHER's list), so the dialog edits reality rather than a blank slate
+    // every time. When PROFORMA has no rows yet, seed `reservas.pasajeros`
+    // blank rows so the operator types into a list the right size.
+    const pasajerosResultado = await getPasajerosReservaAction(reserva.id, "PROFORMA")
+    const pasajerosResueltos = resolverPasajerosParaEditor(pasajerosResultado, reserva.pasajeros)
+
+    if (pasajerosResueltos === null) {
+      // The READ failed. Never let that look like "this reserva has no
+      // passengers" — say so, and leave the single blank row already set above.
+      toast({
+        title: "No se pudo cargar la lista de pasajeros",
+        description: pasajerosResultado.error,
+        variant: "destructive",
+      })
+      return
     }
+
+    setEditableData((prev) => ({ ...prev, pasajeros: pasajerosResueltos }))
   }
+
+  /**
+   * Deep link from /reservas/ver/[id] and /reservas/pendientes:
+   * `?reserva_id=<reservas.id>` opens THIS page's existing edit dialog for
+   * that reserva and filters the list behind it to its `codigo`.
+   *
+   * It calls the EXISTING openEditDialog — no generation validation is
+   * duplicated or bypassed here; arriving via the deep link goes through
+   * exactly the same handler as clicking the row.
+   *
+   * Runs once: the ref latch is set BEFORE the async call, and the effect
+   * early-returns while `loading`, so it can never race the initial fetch (an
+   * empty `reservas` array would otherwise look like "id not found").
+   */
+  const deepLinkAplicado = useRef(false)
+
+  useEffect(() => {
+    if (loading || deepLinkAplicado.current) return
+
+    const resultado = resolverReservaDeepLink(searchParams.get("reserva_id"), reservas)
+    if (resultado.estado === "sin-param") return
+
+    deepLinkAplicado.current = true
+
+    if (resultado.estado === "no-encontrada") {
+      toast({
+        title: "Reserva no encontrada",
+        description: `No existe una reserva con id ${resultado.param}. Seleccione una de la lista.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSearchQuery(resultado.reserva.codigo)
+    openEditDialog(resultado.reserva)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, reservas, searchParams])
 
   const addPasajero = () => {
     setEditableData((prev) => ({
@@ -355,6 +456,7 @@ export default function FacturacionProformaPage() {
           reserva.id,
           pasajerosAGuardar,
           user?.nombre || "Usuario Sistema",
+          "PROFORMA",
         )
         if (!guardarResultado.success) {
           toast({
@@ -366,7 +468,7 @@ export default function FacturacionProformaPage() {
         }
       }
 
-      const pasajerosResultado = await getPasajerosReservaAction(reserva.id)
+      const pasajerosResultado = await getPasajerosReservaAction(reserva.id, "PROFORMA")
       if (!pasajerosResultado.success) {
         toast({
           title: "No se pudo obtener la lista de pasajeros",
@@ -841,17 +943,6 @@ export default function FacturacionProformaPage() {
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Observación */}
-            <div>
-              <label className="text-sm font-medium mb-2 block">Observación</label>
-              <Textarea
-                value={editableData.observacion}
-                onChange={(e) => setEditableData((prev) => ({ ...prev, observacion: e.target.value }))}
-                placeholder="Ingrese observaciones adicionales..."
-                rows={3}
-              />
-            </div>
-
             {/* Información de Pasajeros */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -911,5 +1002,31 @@ export default function FacturacionProformaPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/**
+ * Next 14.2 requires any client component calling useSearchParams() to sit
+ * under a Suspense boundary, or `next build` fails with "useSearchParams()
+ * should be wrapped in a suspense boundary". `npm run qa` never runs
+ * `next build`, so this is only provable with `npx next build`.
+ *
+ * The fallback reuses this page's own existing spinner markup so no new
+ * visual language is introduced.
+ */
+export default function FacturacionProformaPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Cargando proformas...</p>
+          </div>
+        </div>
+      }
+    >
+      <FacturacionProformaPageInner />
+    </Suspense>
   )
 }
