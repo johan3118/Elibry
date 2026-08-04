@@ -9,7 +9,7 @@
  * repo and introducing one is out of this sprint's scope.
  */
 import { describe, it, expect } from "vitest"
-import { filasBlancasParaPasajeros, resolverPasajerosParaEditor } from "@/app/facturacion/proforma/page"
+import { filasBlancasParaPasajeros, resolverPasajerosParaEditor } from "@/lib/proforma-passengers"
 
 describe("filasBlancasParaPasajeros — how many blank rows PROFORMA opens with", () => {
   it("seeds exactly reservas.pasajeros rows when it is a finite integer >= 1", () => {

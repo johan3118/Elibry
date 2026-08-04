@@ -38,7 +38,7 @@ import {
   mapearDetallesAOcupaciones,
   debePrefillarOcupaciones,
   resolverOcupacionesParaPrefill,
-} from "../app/facturacion/voucher/page"
+} from "../lib/voucher-page-logic"
 
 // Two NON-IDENTICAL productos so a test can't pass by accident on "the first
 // item's value repeated".

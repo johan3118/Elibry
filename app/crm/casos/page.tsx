@@ -24,6 +24,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { buildCierreOptimista } from "@/lib/crm-casos-logic"
 import { supabase } from "@/lib/supabase"
 import { cerrarCasoAction } from "@/app/actions/crm-actions"
 import { useToast } from "@/hooks/use-toast"
@@ -127,18 +128,6 @@ const fallbackComentarios: SeguimientoComentario[] = [
     created_at: "2024-01-14T15:30:00Z",
   },
 ]
-
-// Pure helper: builds the optimistic patch applied to a case when it is closed.
-// Exported so the omission of comentario_cierre (CR2) can be covered by a unit test
-// without needing to render the client component.
-export function buildCierreOptimista(cerradoPor: string, fechaCierre: string, comentarioCierre: string) {
-  return {
-    estado: "CERRADO" as const,
-    cerrado_por: cerradoPor,
-    fecha_cierre: fechaCierre,
-    comentario_cierre: comentarioCierre || undefined,
-  }
-}
 
 export default function CRMCasosPage() {
   const router = useRouter()

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest"
-import { buildCierreOptimista } from "../app/crm/casos/page"
+import { buildCierreOptimista } from "../lib/crm-casos-logic"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CR2 regression test: the optimistic patch applied to a case on close must
