@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { crearPagoProvisional } from "@/lib/provisional-system"
 import { useUser } from "@/lib/user-context"
+import { calcularBalanceReserva, montosDePagosDeReserva, type PagoMontoInput } from "@/lib/finance"
 
 interface Cliente {
   id: number
@@ -56,6 +57,10 @@ export default function RegistrarPagoPage() {
   const [reservaSeleccionada, setReservaSeleccionada] = useState<Reserva | null>(null)
   const [searchCliente, setSearchCliente] = useState("")
   const [searchReserva, setSearchReserva] = useState("")
+  // undefined = balance UNKNOWN (pagos read not resolved / failed); [] = genuinely
+  // no payments for that reserva. These two must stay distinguishable — collapsing
+  // them is the bug this state exists to fix.
+  const [pagosPorReserva, setPagosPorReserva] = useState<Record<number, number[] | undefined>>({})
 
   const [formData, setFormData] = useState({
     reserva_id: "",
@@ -78,6 +83,7 @@ export default function RegistrarPagoPage() {
     if (reservaIdParam) {
       cargarReservaDirecta(Number(reservaIdParam))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reservaIdParam])
 
   useEffect(() => {
@@ -85,6 +91,20 @@ export default function RegistrarPagoPage() {
       cargarReservasCliente(clienteSeleccionado.id)
     }
   }, [clienteSeleccionado])
+
+  // Single source of truth for the three balance-displaying surfaces below.
+  // `montosOverride`, when passed, is used instead of the `pagosPorReserva`
+  // state — needed by cargarReservaDirecta, which must prefill Monto in the
+  // same tick it fetches pagos, before the setState above has committed.
+  // The literal `0` for abonadoContabilidad is HARD CALL #2 (plan §7): the
+  // frozen spec pins precio_total − Σ pagos; /reservas/ver/[id] treats
+  // abonado_contabilidad as a separate accounting line (backlog B-20).
+  const balanceVigenteDeReserva = (reserva: Reserva, montosOverride?: number[]): number | null => {
+    const montos = montosOverride !== undefined ? montosOverride : pagosPorReserva[reserva.id]
+    if (montos === undefined) return null
+    const balance = calcularBalanceReserva(Number(reserva.precio_total), 0, montos)
+    return Number.isFinite(balance) ? balance : null
+  }
 
   const cargarReservaDirecta = async (reservaId: number) => {
     try {
@@ -125,6 +145,21 @@ export default function RegistrarPagoPage() {
         }
       }
 
+      // Load this reserva's pagos to compute its CURRENT balance. On error,
+      // leave the entry undefined (UNKNOWN) and never fall back to precio_total.
+      const { data: pagosData, error: pagosError } = await supabase
+        .from("pagos")
+        .select("reserva_id, monto")
+        .eq("reserva_id", reservaId)
+
+      let montos: number[] | undefined
+      if (pagosError) {
+        console.error("Error cargando pagos de la reserva:", pagosError)
+      } else {
+        montos = montosDePagosDeReserva(reservaId, (pagosData as PagoMontoInput[]) || [])
+        setPagosPorReserva((prev) => ({ ...prev, [reservaId]: montos }))
+      }
+
       // Set the client and reservation
       setClienteSeleccionado(clienteData)
       const reservaConProducto = {
@@ -133,10 +168,12 @@ export default function RegistrarPagoPage() {
       }
       setReservas([reservaConProducto])
       setReservaSeleccionada(reservaConProducto)
+      const balance = balanceVigenteDeReserva(reservaConProducto, montos)
       setFormData((prev) => ({
         ...prev,
         reserva_id: reservaData.id.toString(),
         cliente_id: reservaData.cliente_id.toString(),
+        monto: balance !== null ? balance.toFixed(2) : "",
       }))
     } catch (error) {
       console.error("Error cargando reserva directa:", error)
@@ -210,6 +247,42 @@ export default function RegistrarPagoPage() {
         })) || []
 
       setReservas(reservasConProductos)
+
+      // Load pagos for these reservas to compute each one's CURRENT balance.
+      // On error, leave the entries undefined (UNKNOWN) and never fall back
+      // to the stale balance_general/balance_reserva columns.
+      const reservaIds = reservasData?.map((r) => r.id) || []
+      if (reservaIds.length > 0) {
+        const { data: pagosData, error: pagosError } = await supabase
+          .from("pagos")
+          .select("reserva_id, monto")
+          .in("reserva_id", reservaIds)
+
+        if (pagosError) {
+          console.error("Error cargando pagos de reservas:", pagosError)
+          // Invalidate (never leave stale) any entries for this batch. A
+          // client can be deselected and reselected without a full page
+          // reload — clienteSeleccionado A -> null -> A re-fires this effect
+          // — and if THIS second fetch fails, leaving the first load's
+          // entries untouched would render the OLD balances as if they were
+          // still live. Deleting them forces "No disponible" instead.
+          setPagosPorReserva((prev) => {
+            const next = { ...prev }
+            for (const id of reservaIds) {
+              delete next[id]
+            }
+            return next
+          })
+        } else {
+          setPagosPorReserva((prev) => {
+            const next = { ...prev }
+            for (const id of reservaIds) {
+              next[id] = montosDePagosDeReserva(id, (pagosData as PagoMontoInput[]) || [])
+            }
+            return next
+          })
+        }
+      }
     } catch (error) {
       console.error("Error:", error)
     }
@@ -248,10 +321,11 @@ export default function RegistrarPagoPage() {
 
   const handleReservaSelect = (reserva: Reserva) => {
     setReservaSeleccionada(reserva)
+    const balance = balanceVigenteDeReserva(reserva)
     setFormData((prev) => ({
       ...prev,
       reserva_id: reserva.id.toString(),
-      monto: (reserva.balance_general || reserva.balance_reserva || reserva.precio_total).toString(),
+      monto: balance !== null ? balance.toFixed(2) : "",
     }))
     setSearchReserva("")
   }
@@ -518,13 +592,12 @@ export default function RegistrarPagoPage() {
                           <div>
                             <p className="font-semibold text-blue-800">Reserva: {reservaSeleccionada.id}</p>
                             <p className="text-sm text-blue-600">
-                              Balance: {reservaSeleccionada.moneda || "DOP"}{" "}
-                              {formatCurrency(
-                                reservaSeleccionada.balance_general ||
-                                  reservaSeleccionada.balance_reserva ||
-                                  reservaSeleccionada.precio_total,
-                                reservaSeleccionada.moneda,
-                              )}
+                              {(() => {
+                                const balance = balanceVigenteDeReserva(reservaSeleccionada)
+                                return balance !== null
+                                  ? `Balance: ${reservaSeleccionada.moneda || "DOP"} ${formatCurrency(balance, reservaSeleccionada.moneda)}`
+                                  : "Balance: No disponible"
+                              })()}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -562,10 +635,10 @@ export default function RegistrarPagoPage() {
                               </div>
                               <div className="text-right">
                                 <p className="font-semibold text-green-600">
-                                  {formatCurrency(
-                                    reserva.balance_general || reserva.balance_reserva || reserva.precio_total,
-                                    reserva.moneda,
-                                  )}
+                                  {(() => {
+                                    const balance = balanceVigenteDeReserva(reserva)
+                                    return balance !== null ? formatCurrency(balance, reserva.moneda) : "No disponible"
+                                  })()}
                                 </p>
                                 <Badge variant="outline">{reserva.status}</Badge>
                               </div>
