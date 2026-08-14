@@ -212,10 +212,14 @@ export default function VerReservaPage() {
           balance_general: calcularBalanceReserva(precioTotal, 0, montos),
           balance_abonado: calcularMontoPagado(0, montos),
           abonado_contabilidad: abonadoContabilidadFijo,
+          // T8b: gate on the SAME rounded value used for balance_general
+          // above (calcularBalanceReserva), not the raw saldoRestante — the
+          // raw diff can leave float dust (e.g. 1.14e-13) after a fully-paid
+          // reserva, which read as PARCIAL next to a displayed RD$0.00.
           status:
-            saldoRestante <= 0 && precioTotal > 0
+            calcularBalanceReserva(precioTotal, 0, montos) <= 0 && precioTotal > 0
               ? "PAGADA"
-              : totalPagosRealizados > 0 && saldoRestante > 0
+              : calcularMontoPagado(0, montos) > 0 && calcularBalanceReserva(precioTotal, 0, montos) > 0
                 ? "PARCIAL"
                 : reservaData.status || "PENDIENTE",
         }
