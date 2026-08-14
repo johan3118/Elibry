@@ -561,7 +561,7 @@ export default function CrearReservaPage() {
         })
 
         setTimeout(() => {
-          router.push("/reservas/pendientes")
+          router.push(`/facturacion/proforma?reserva_id=${reservaCreada.id}`)
         }, 2000)
       } else {
         // Si es usuario normal, crear como provisional
@@ -621,9 +621,21 @@ export default function CrearReservaPage() {
             title: "Éxito",
             description: "Solicitud de reserva enviada para aprobación del administrador. Será procesada en breve.",
           })
-          setTimeout(() => {
-            router.push("/reservas/pendientes")
-          }, 2000)
+
+          if (result.data?.id) {
+            setTimeout(() => {
+              router.push(`/facturacion/proforma?reserva_id=${result.data.id}`)
+            }, 2000)
+          } else {
+            toast({
+              title: "Advertencia",
+              description: "No se pudo abrir la proforma. Redirigiendo al listado de reservas.",
+              variant: "destructive",
+            })
+            setTimeout(() => {
+              router.push("/reservas/pendientes")
+            }, 2000)
+          }
         } else {
           toast({
             title: "Error",
