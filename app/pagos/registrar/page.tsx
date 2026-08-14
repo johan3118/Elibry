@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -83,6 +83,12 @@ export default function RegistrarPagoPage() {
     if (reservaIdParam) {
       cargarReservaDirecta(Number(reservaIdParam))
     }
+    // Safe to omit cargarReservaDirecta: reservaIdParam is read once from the
+    // URL this route was mounted with (its only real-world producer is
+    // app/reservas/pendientes/page.tsx, a DIFFERENT pathname), so a change to
+    // it always crosses a pathname change and remounts this component fresh
+    // — it cannot change in place while this effect is alive. Do not delete
+    // this line without re-verifying that invariant still holds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reservaIdParam])
 
@@ -91,6 +97,33 @@ export default function RegistrarPagoPage() {
       cargarReservasCliente(clienteSeleccionado.id)
     }
   }, [clienteSeleccionado])
+
+  // Generation-guard state for the pagos-fetch subsystem (round-2 fix for a
+  // QA-found regression in the round-1 invalidation fix below). Two
+  // independent pagos fetches can target the SAME reserva within one page
+  // load: cargarReservaDirecta's own targeted single-id fetch, and the
+  // CHAINED cargarReservasCliente batch fetch that ALWAYS follows it —
+  // cargarReservaDirecta's pre-existing, unconditional setClienteSeleccionado
+  // call fires the [clienteSeleccionado] effect, which re-fetches pagos for
+  // ALL of that client's reservas, including the one just directly loaded.
+  // If the direct fetch succeeds and the chained batch fetch then fails, a
+  // blind delete-by-id (the round-1 fix) wipes the entry the direct fetch
+  // JUST correctly wrote — an AC1.4 violation: the "Balance:" line (which
+  // reads live state) flips to "No disponible" while Monto (frozen at the
+  // value already computed at submit-prefill time) still shows the correct
+  // number.
+  //
+  // pagosFetchGenRef tags each pagos-fetch invocation with a generation
+  // number. pagosDirectLoadRef is a ONE-SHOT record of the id + generation
+  // the MOST RECENT direct load wrote: cargarReservasCliente reads AND
+  // consumes it the instant its own fetch starts, so it can only protect a
+  // batch fetch that immediately follows a direct load. A genuinely
+  // independent re-fetch (e.g. deselect this client -> reselect it, or pick
+  // a different client) never finds this marker set (it was already
+  // consumed by the chained call that ran right after the direct load), so
+  // it blind-deletes on failure exactly as the round-1 fix intended.
+  const pagosFetchGenRef = useRef(0)
+  const pagosDirectLoadRef = useRef<{ id: number; gen: number } | null>(null)
 
   // Single source of truth for the three balance-displaying surfaces below.
   // `montosOverride`, when passed, is used instead of the `pagosPorReserva`
@@ -147,6 +180,7 @@ export default function RegistrarPagoPage() {
 
       // Load this reserva's pagos to compute its CURRENT balance. On error,
       // leave the entry undefined (UNKNOWN) and never fall back to precio_total.
+      const miGeneracion = ++pagosFetchGenRef.current
       const { data: pagosData, error: pagosError } = await supabase
         .from("pagos")
         .select("reserva_id, monto")
@@ -158,6 +192,10 @@ export default function RegistrarPagoPage() {
       } else {
         montos = montosDePagosDeReserva(reservaId, (pagosData as PagoMontoInput[]) || [])
         setPagosPorReserva((prev) => ({ ...prev, [reservaId]: montos }))
+        // Mark this id as just-confirmed so the chained cargarReservasCliente
+        // fetch that setClienteSeleccionado (below) is about to trigger
+        // doesn't wipe it if THAT redundant fetch fails.
+        pagosDirectLoadRef.current = { id: reservaId, gen: miGeneracion }
       }
 
       // Set the client and reservation
@@ -253,6 +291,15 @@ export default function RegistrarPagoPage() {
       // to the stale balance_general/balance_reserva columns.
       const reservaIds = reservasData?.map((r) => r.id) || []
       if (reservaIds.length > 0) {
+        ++pagosFetchGenRef.current
+        // One-shot read-and-consume, captured BEFORE the await so it can
+        // never leak into a later, unrelated invocation of this function.
+        // Only non-null when THIS call is the chained fetch that immediately
+        // follows a direct load's own successful pagos fetch for that same
+        // id (see the generation-guard comment above cargarReservaDirecta).
+        const cargaDirectaPrevia = pagosDirectLoadRef.current
+        pagosDirectLoadRef.current = null
+
         const { data: pagosData, error: pagosError } = await supabase
           .from("pagos")
           .select("reserva_id, monto")
@@ -266,9 +313,16 @@ export default function RegistrarPagoPage() {
           // — and if THIS second fetch fails, leaving the first load's
           // entries untouched would render the OLD balances as if they were
           // still live. Deleting them forces "No disponible" instead.
+          //
+          // EXCEPT the one id (if any) a same-load direct fetch already
+          // confirmed via cargaDirectaPrevia: this batch fetch's failure is
+          // redundant for that specific id, not evidence its data actually
+          // went stale — see the generation-guard comment above
+          // cargarReservaDirecta for why blind-deleting it regresses AC1.4.
           setPagosPorReserva((prev) => {
             const next = { ...prev }
             for (const id of reservaIds) {
+              if (cargaDirectaPrevia && id === cargaDirectaPrevia.id) continue
               delete next[id]
             }
             return next
