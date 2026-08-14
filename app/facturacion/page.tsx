@@ -306,7 +306,7 @@ export default function FacturacionPage() {
               <CardContent className="p-4">
                 <div className="flex items-center space-x-2">
                   <Receipt className="w-5 h-5" style={{ color: "#006600" }} />
-                  <span className="font-medium">Proforma GEB</span>
+                  <span className="font-medium">Proforma</span>
                 </div>
               </CardContent>
             </Card>
@@ -316,7 +316,7 @@ export default function FacturacionPage() {
               <CardContent className="p-4">
                 <div className="flex items-center space-x-2">
                   <CreditCard className="w-5 h-5" style={{ color: "#3399cc" }} />
-                  <span className="font-medium">Voucher GEB</span>
+                  <span className="font-medium">Voucher</span>
                 </div>
               </CardContent>
             </Card>

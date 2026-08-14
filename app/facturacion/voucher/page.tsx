@@ -871,7 +871,7 @@ function VoucherPageInner() {
               <Receipt className="w-6 h-6" style={{ color: "#3399cc" }} />
               <div>
                 <h1 className="text-2xl font-bold" style={{ color: "#3399cc" }}>
-                  Voucher GEB
+                  Voucher
                 </h1>
                 <p className="text-sm text-gray-500">Generar vouchers de servicios para clientes</p>
               </div>
