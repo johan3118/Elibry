@@ -14,7 +14,9 @@ interface PaymentReceiptProps {
     concepto?: string
     referencia?: string
     fecha_pago: string
-    registrado_por?: string
+    // pagos.registrado_por has NO writer anywhere in the repo (plan §2.3) —
+    // the column the app actually populates is pagos.usuario.
+    usuario?: string
   }
   reserva: {
     codigo: string
@@ -27,11 +29,26 @@ interface PaymentReceiptProps {
     identificacion?: string
     telefono?: string
     email?: string
+    // schema-source-of-truth: corroborated by live write sites
+    // (app/clientes/registrar/page.tsx:180, app/clientes/editar/page.tsx:272)
+    // and read sites (app/clientes/ver/page.tsx:231), NOT
+    // information_schema-verified — null-guarded below.
+    direccion?: string
+  }
+  // PLACEHOLDER-EMPRESA-SETTINGS (T6, lib/empresa-info.ts): this renderer
+  // stays pure/data-driven — the caller imports EMPRESA_PLACEHOLDER and
+  // passes it in as a prop, matching lib/document-generator.tsx's
+  // `ReciboData.empresa` shape (never imported here directly).
+  empresa: {
+    nombre: string
+    direccion: string
+    telefono: string
+    email: string
   }
   onClose?: () => void
 }
 
-export function PaymentReceipt({ pago, reserva, cliente, onClose }: PaymentReceiptProps) {
+export function PaymentReceipt({ pago, reserva, cliente, empresa, onClose }: PaymentReceiptProps) {
   const receiptRef = useRef<HTMLDivElement>(null)
 
   const formatCurrency = (amount: number, currency: string) => {
@@ -167,7 +184,12 @@ export function PaymentReceipt({ pago, reserva, cliente, onClose }: PaymentRecei
         <div ref={receiptRef}>
           {/* Header */}
           <div className="header text-center border-b-2 border-gray-800 pb-4 mb-4">
-            <h1 className="text-xl font-bold text-gray-800">RECIBO DE PAGO</h1>
+            <p className="text-sm font-semibold text-gray-800">{empresa.nombre}</p>
+            <p className="text-xs text-gray-500">{empresa.direccion}</p>
+            <p className="text-xs text-gray-500">
+              Tel: {empresa.telefono} | Email: {empresa.email}
+            </p>
+            <h1 className="text-xl font-bold text-gray-800 mt-2">RECIBO DE PAGO</h1>
             <p className="text-sm text-gray-600">No. {pago.id.toString().padStart(6, "0")}</p>
             <p className="text-xs text-gray-500">Reserva: {reserva.codigo}</p>
           </div>
@@ -201,6 +223,12 @@ export function PaymentReceipt({ pago, reserva, cliente, onClose }: PaymentRecei
               <div className="row flex justify-between text-sm">
                 <span className="text-gray-600">Identificación:</span>
                 <span className="font-medium">{cliente.identificacion}</span>
+              </div>
+            )}
+            {cliente.direccion && (
+              <div className="row flex justify-between text-sm">
+                <span className="text-gray-600">Dirección:</span>
+                <span className="font-medium">{cliente.direccion}</span>
               </div>
             )}
           </div>
@@ -243,7 +271,11 @@ export function PaymentReceipt({ pago, reserva, cliente, onClose }: PaymentRecei
 
           {/* Footer */}
           <div className="footer text-center mt-6 pt-4 border-t border-dashed border-gray-300">
-            <p className="text-xs text-gray-500">Atendido por: {pago.registrado_por || "Sistema"}</p>
+            {/* stockin-zero-price: "N/A" is an honest absence marker, never a
+                fabricated actor name — pagos.registrado_por has no writer
+                anywhere in the repo (plan §2.3); pagos.usuario is the real
+                populated column. */}
+            <p className="text-xs text-gray-500">Atendido por: {pago.usuario || "N/A"}</p>
             <p className="text-xs text-gray-400 mt-2">Gracias por su preferencia</p>
             <p className="text-xs text-gray-400">Este documento es un comprobante de pago válido</p>
           </div>

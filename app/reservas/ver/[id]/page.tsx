@@ -31,6 +31,10 @@ import Link from "next/link"
 import { PaymentReceipt } from "@/components/payment-receipt"
 import { TimeFormatToggle, formatTimeWithPreference } from "@/components/time-format-toggle"
 import { formatDateDMY } from "@/lib/utils"
+import { calcularBalanceReserva, calcularMontoPagado, montosDePagosDeReserva } from "@/lib/finance"
+// PLACEHOLDER-EMPRESA-SETTINGS (T6, lib/empresa-info.ts): the RECIBO's company
+// block is fed from this single placeholder source, not a page literal.
+import { EMPRESA_PLACEHOLDER } from "@/lib/empresa-info"
 
 interface Cliente {
   id: number
@@ -44,6 +48,11 @@ interface Cliente {
   rnc?: string
   referido_por?: string
   status?: string
+  // schema-source-of-truth: corroborated by live write sites
+  // (app/clientes/registrar/page.tsx:180, app/clientes/editar/page.tsx:272)
+  // and read sites (app/clientes/ver/page.tsx:231), NOT
+  // information_schema-verified.
+  direccion?: string
 }
 
 interface Producto {
@@ -84,6 +93,9 @@ interface Pago {
   referencia?: string
   fecha_pago?: string
   registrado_por?: string
+  // pagos.registrado_por has NO writer anywhere in the repo (plan §2.3) —
+  // the column the app actually populates is pagos.usuario.
+  usuario?: string
   fecha_creado?: string
   status?: string
 }
@@ -183,12 +195,22 @@ export default function VerReservaPage() {
         const saldoRestante = precioTotal - totalPagosRealizados
         const abonadoContabilidadFijo = Number.parseFloat(reservaData.abonado_contabilidad || 0)
 
+        // lib/finance.ts is the single source of truth for this money math
+        // (plan §0 invariant table) — nothing here is recomputed inline.
+        const montos = montosDePagosDeReserva(Number(reservaId), pagosData || [])
+
         // Actualizar reserva con lógica correcta
         const reservaActualizada = {
           ...reservaData,
           balance_reserva: precioTotal,
-          balance_general: saldoRestante,
-          balance_abonado: totalPagosRealizados,
+          // HARD CALL #2 (plan §7): abonadoContabilidad hardcoded to 0 here.
+          // The frozen spec pins saldo pendiente = precio_total − Σ pagos;
+          // this block treats reservas.abonado_contabilidad as a separate,
+          // independently displayed accounting line (abonadoContabilidadFijo
+          // below), so the two can disagree when it is non-zero. Reconciling
+          // them is a product ruling — backlog B-20.
+          balance_general: calcularBalanceReserva(precioTotal, 0, montos),
+          balance_abonado: calcularMontoPagado(0, montos),
           abonado_contabilidad: abonadoContabilidadFijo,
           status:
             saldoRestante <= 0 && precioTotal > 0
@@ -937,7 +959,9 @@ export default function VerReservaPage() {
                 concepto: selectedPago.concepto,
                 referencia: selectedPago.referencia,
                 fecha_pago: selectedPago.fecha_pago || selectedPago.fecha_creado || new Date().toISOString(),
-                registrado_por: selectedPago.registrado_por,
+                // pagos.registrado_por has NO writer anywhere in the repo
+                // (plan §2.3) — pagos.usuario is the real populated column.
+                usuario: selectedPago.usuario,
               }}
               reserva={{
                 codigo: reserva.codigo,
@@ -950,7 +974,9 @@ export default function VerReservaPage() {
                 identificacion: cliente.identificacion || cliente.rnc,
                 telefono: cliente.telefonos?.split(",")[0],
                 email: cliente.email,
+                direccion: cliente.direccion,
               }}
+              empresa={EMPRESA_PLACEHOLDER}
               onClose={() => setShowReceiptDialog(false)}
             />
           )}
