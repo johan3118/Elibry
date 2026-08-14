@@ -116,8 +116,8 @@ export default function CrearReservaPage() {
     referidoPor: "",
     cedulaCliente: "",
     idLugar: "",
-    horaEntrada: "",
-    horaSalida: "",
+    horaEntrada: "15:00",
+    horaSalida: "12:00",
     pasajeros: "",
     habitaciones: "",
     atendidoPor: user?.nombre || "Usuario Sistema",
@@ -353,6 +353,24 @@ export default function CrearReservaPage() {
         toast({
           title: "Error",
           description: "Debe seleccionar fechas de entrada y salida",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!formData.horaEntrada) {
+        toast({
+          title: "Error",
+          description: "Debe ingresar la hora de entrada",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!formData.horaSalida) {
+        toast({
+          title: "Error",
+          description: "Debe ingresar la hora de salida",
           variant: "destructive",
         })
         return
@@ -905,7 +923,7 @@ export default function CrearReservaPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="horaEntrada">Hora Entrada</Label>
+                  <Label htmlFor="horaEntrada">Hora Entrada *</Label>
                   <Input
                     id="horaEntrada"
                     type="time"
@@ -919,7 +937,7 @@ export default function CrearReservaPage() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="horaSalida">Hora Salida</Label>
+                  <Label htmlFor="horaSalida">Hora Salida *</Label>
                   <Input
                     id="horaSalida"
                     type="time"
