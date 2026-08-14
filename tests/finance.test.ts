@@ -5,7 +5,9 @@ import {
   calcularMontoPagado,
   calcularBalanceReserva,
   calcularBalanceGeneralPorMoneda,
+  montosDePagosDeReserva,
   type ReservaBalanceInput,
+  type PagoMontoInput,
 } from "../lib/finance"
 
 describe("sumarPagos", () => {
@@ -195,5 +197,82 @@ describe("calcularBalanceReserva does NOT match /reservas/ver/[id]'s divergent f
     expect(ours).toBe(500) // 1000 - 200 - 300, matching /clientes/balance
     expect(reservasVer).toBe(700) // 1000 - 300, ignoring abonado — the divergent formula
     expect(ours).not.toBe(reservasVer)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1 — montosDePagosDeReserva
+//
+// HARD CALL #1 (plan §7): NO `estado` filter — sums every pago regardless of
+// status, matching /reservas/ver/[id]:180-182, the only live-correct
+// computation in the repo. A fixture containing an ANULADO pago is asserted
+// INCLUDED below to pin that ruling so a future change is a deliberate edit.
+//
+// `fake-green-tests` anti-pattern #12 (homogeneous fixtures): the shared
+// fixture below has 4 pagos across 3 different reserva_ids, so a buggy
+// `return pagos.map(...)` that ignores the reserva_id filter goes RED (it
+// would return pagos belonging to OTHER reservas too, changing the length
+// and values of the result).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("montosDePagosDeReserva", () => {
+  const pagosFixture: PagoMontoInput[] = [
+    { reserva_id: 7, monto: 100 },
+    { reserva_id: 7, monto: 50, estado: "ANULADO" } as PagoMontoInput,
+    { reserva_id: 9, monto: 999 },
+    { reserva_id: 12, monto: 1 },
+  ]
+
+  it("returns [] for an empty pagos array", () => {
+    expect(montosDePagosDeReserva(7, [])).toEqual([])
+  })
+
+  it("matches a string reserva_id against the numeric id requested", () => {
+    const pagos: PagoMontoInput[] = [{ reserva_id: "7", monto: 100 }]
+    expect(montosDePagosDeReserva(7, pagos)).toEqual([100])
+  })
+
+  it("coerces a string monto to a number", () => {
+    const pagos: PagoMontoInput[] = [{ reserva_id: 7, monto: "100.50" }]
+    expect(montosDePagosDeReserva(7, pagos)).toEqual([100.5])
+  })
+
+  it("propagates a non-numeric monto as NaN, never silently 0 (stockin-zero-price)", () => {
+    const pagos: PagoMontoInput[] = [{ reserva_id: 7, monto: "abc" }]
+    const result = montosDePagosDeReserva(7, pagos)
+    expect(result).toHaveLength(1)
+    expect(Number.isNaN(result[0])).toBe(true)
+    expect(result[0]).not.toBe(0)
+  })
+
+  it("keeps a legitimate 0 monto as 0, never dropped or coerced (stockin-zero-price, other direction)", () => {
+    const pagos: PagoMontoInput[] = [{ reserva_id: 7, monto: 0 }]
+    expect(montosDePagosDeReserva(7, pagos)).toEqual([0])
+  })
+
+  it("excludes a pago belonging to a different reserva", () => {
+    const pagos: PagoMontoInput[] = [
+      { reserva_id: 7, monto: 100 },
+      { reserva_id: 8, monto: 500 },
+    ]
+    expect(montosDePagosDeReserva(7, pagos)).toEqual([100])
+  })
+
+  it("includes an ANULADO pago (HARD CALL #1 — no estado filter, pins the sprint's ruling)", () => {
+    const pagos: PagoMontoInput[] = [
+      { reserva_id: 7, monto: 100, estado: "ACTIVO" } as PagoMontoInput,
+      { reserva_id: 7, monto: 50, estado: "ANULADO" } as PagoMontoInput,
+    ]
+    expect(montosDePagosDeReserva(7, pagos)).toEqual([100, 50])
+  })
+
+  it("filters a multi-reserva, multi-pago fixture down to only the requested reserva's montos, in order", () => {
+    // Homogeneous-fixture guard (fake-green-tests #12): 4 pagos, 3 distinct
+    // reserva_ids. A `pagos.map(...)` with no filter would return
+    // [100, 50, 999, 1] (length 4) instead of [100, 50] (length 2).
+    expect(montosDePagosDeReserva(7, pagosFixture)).toEqual([100, 50])
+    expect(montosDePagosDeReserva(9, pagosFixture)).toEqual([999])
+    expect(montosDePagosDeReserva(12, pagosFixture)).toEqual([1])
+    expect(montosDePagosDeReserva(999, pagosFixture)).toEqual([])
   })
 })

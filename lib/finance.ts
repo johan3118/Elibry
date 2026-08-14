@@ -57,6 +57,45 @@ export function calcularBalanceReserva(total: number, abonadoContabilidad: numbe
   return redondearMoneda(total - calcularMontoPagado(abonadoContabilidad, pagos))
 }
 
+/** A single `pagos` row's shape, as loosely as it can arrive from the DB. */
+export interface PagoMontoInput {
+  reserva_id?: number | string | null
+  monto?: number | string | null
+}
+
+/**
+ * Returns the raw payment amounts (`monto`, coerced with `Number(...)`) that
+ * belong to a given reserva, matching the ONLY live "correct" computation in
+ * the repo: `app/reservas/ver/[id]/page.tsx:180-182` sums *all* of a
+ * reserva's pagos with no `estado` filter.
+ *
+ * `pagos.estado` value space (verified against live write sites, plan §2.1):
+ * `ACTIVO` / `ANULADO` (app/pagos/registrar/page.tsx:317),
+ * `CONFIRMADO` (app/reservas/crear/page.tsx:530),
+ * `PENDIENTE` (app/reservas/crear/page.tsx:564), and the column default
+ * `'completado'` (scripts/024-create-pagos-table.sql:14, migrations-only,
+ * NOT evidence of a live value). `scripts/030-fix-balance-logic-correct.sql:17`
+ * filters `status = 'COMPLETADO'`, but NO live path reads or writes a
+ * `status` column on `pagos` — that filter matches no live column.
+ *
+ * HARD CALL #1 (plan §7): should `estado = 'ANULADO'` be excluded from paid
+ * totals? Ruling for this sprint: NO — this function applies **no `estado`
+ * filter at all**, summing every pago regardless of status, to match the
+ * existing live computation exactly. A naive `estado === 'ACTIVO'` filter
+ * would ALSO silently drop the real `CONFIRMADO`/`completado` rows above —
+ * a worse bug (money quietly disappearing from a balance). Revisiting this
+ * is a product ruling, filed as backlog B-19. If overruled, the fix is a
+ * one-line filter added here plus new fixtures — deliberately concentrated
+ * in this one function for exactly that reason.
+ *
+ * Deliberately does NOT coerce a corrupt/absent `monto` to `0`
+ * (`stockin-zero-price`, block-never-default): `Number("abc")` propagates as
+ * `NaN` so callers can render "No disponible" instead of fabricating money.
+ */
+export function montosDePagosDeReserva(reservaId: number, pagos: PagoMontoInput[]): number[] {
+  return pagos.filter((p) => Number(p.reserva_id) === reservaId).map((p) => Number(p.monto))
+}
+
 /** A single reserva's inputs for BALANCE GENERAL aggregation. */
 export interface ReservaBalanceInput {
   precioTotal: number
