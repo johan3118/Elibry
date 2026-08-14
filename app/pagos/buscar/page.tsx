@@ -15,6 +15,10 @@ import { createClient } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { generateReciboHTML, openDocumentInNewWindow } from "@/lib/document-generator"
 import { useUser } from "@/lib/user-context"
+import { calcularBalanceReserva, calcularMontoPagado, montosDePagosDeReserva } from "@/lib/finance"
+// PLACEHOLDER-EMPRESA-SETTINGS (T6, lib/empresa-info.ts): the RECIBO's company
+// block is fed from this single placeholder source, not a page literal.
+import { EMPRESA_PLACEHOLDER } from "@/lib/empresa-info"
 
 interface Cliente {
   id: number
@@ -25,6 +29,7 @@ interface Cliente {
   rnc?: string
   telefonos?: string
   email?: string
+  direccion?: string
 }
 
 interface Producto {
@@ -53,6 +58,7 @@ interface Pago {
   concepto?: string
   numero_recibo?: string
   estado?: string
+  usuario?: string
 }
 
 export default function BuscarPagosPage() {
@@ -133,7 +139,7 @@ export default function BuscarPagosPage() {
       identificacion: cliente.identificacion || cliente.rnc || "N/A",
       telefono: cliente.telefonos || "",
       email: cliente.email || "",
-      direccion: "Dirección no disponible",
+      direccion: cliente.direccion || "Dirección no disponible",
     }
   }
 
@@ -164,12 +170,18 @@ export default function BuscarPagosPage() {
       const clienteData = getClienteData(reservaData.cliente_id)
       const productoData = getProductoData(reservaData.producto_id)
 
+      // Already-loaded `pagos` state (app/pagos/buscar/page.tsx:77-99) — no new
+      // query. `lib/finance.ts` is the single source of truth for this money
+      // math (plan §0 invariant table); nothing here is recomputed inline.
+      const montos = montosDePagosDeReserva(pago.reserva_id, pagos)
+
       const reciboData = {
         cliente: {
           nombre: clienteData.nombre,
           email: clienteData.email,
           telefono: clienteData.telefono,
           direccion: clienteData.direccion,
+          identificacion: clienteData.identificacion,
         },
         pago: {
           id: pago.numero_recibo || `REC-${pago.id}`,
@@ -189,18 +201,28 @@ export default function BuscarPagosPage() {
                     }
                   })(),
                   moneda: reservaData.moneda || "DOP",
+                  concepto: pago.concepto || "N/A",
+                  // pagos.registrado_por has NO writer anywhere in the repo
+                  // (plan §2.3) — the column the app actually populates is
+                  // pagos.usuario. "N/A" is an honest absence marker, never a
+                  // fabricated actor name (stockin-zero-price).
+                  registradoPor: pago.usuario || "N/A",
         },
         reserva: {
           numero: reservaData.id.toString(),
+          codigo: reservaData.codigo,
           servicio: productoData.nombre,
           total: reservaData.precio_total || 0,
+          totalAbonado: calcularMontoPagado(0, montos),
+          // HARD CALL #2 (plan §7): abonadoContabilidad is hardcoded to 0
+          // here. The frozen spec pins saldo pendiente = precio_total − Σ
+          // pagos; /reservas/ver/[id] treats reservas.abonado_contabilidad as
+          // a separate, independently-displayed accounting line, so the two
+          // surfaces can disagree when it is non-zero. Reconciling them is a
+          // product ruling — backlog B-20.
+          saldoPendiente: calcularBalanceReserva(Number(reservaData.precio_total), 0, montos),
         },
-        empresa: {
-          nombre: "Grupo Ellibry",
-          direccion: "Santo Domingo, República Dominicana",
-          telefono: "(809) 123-4567",
-          email: "info@grupoellibry.com",
-        },
+        empresa: EMPRESA_PLACEHOLDER,
       }
 
       const reciboHTML = generateReciboHTML(reciboData)

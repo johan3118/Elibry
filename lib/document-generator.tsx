@@ -34,6 +34,7 @@ export interface ReciboData {
     email: string
     telefono: string
     direccion: string
+    identificacion: string
   }
   pago: {
     id: string
@@ -42,11 +43,16 @@ export interface ReciboData {
     referencia: string
     fecha: string
     moneda: string
+    concepto: string
+    registradoPor: string
   }
   reserva: {
     numero: string
+    codigo: string
     servicio: string
     total: number
+    totalAbonado: number
+    saldoPendiente: number
   }
   empresa: {
     nombre: string
@@ -1746,12 +1752,20 @@ export function generateReciboHTML(data: ReciboData): string {
             <span class="info-value">${data.cliente.nombre}</span>
           </div>
           <div class="info-row">
+            <span class="info-label">Identificación:</span>
+            <span class="info-value">${data.cliente.identificacion}</span>
+          </div>
+          <div class="info-row">
             <span class="info-label">Email:</span>
             <span class="info-value">${data.cliente.email}</span>
           </div>
           <div class="info-row">
             <span class="info-label">Teléfono:</span>
             <span class="info-value">${data.cliente.telefono}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Dirección:</span>
+            <span class="info-value">${data.cliente.direccion}</span>
           </div>
         </div>
 
@@ -1760,6 +1774,10 @@ export function generateReciboHTML(data: ReciboData): string {
           <div class="info-row">
             <span class="info-label">Número de Reserva:</span>
             <span class="info-value">${data.reserva.numero}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Código de Reserva:</span>
+            <span class="info-value">${data.reserva.codigo}</span>
           </div>
           <div class="info-row">
             <span class="info-label">Servicio:</span>
@@ -1771,6 +1789,20 @@ export function generateReciboHTML(data: ReciboData): string {
               style: "currency",
               currency: data.pago.moneda,
             }).format(data.reserva.total)}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Total Abonado:</span>
+            <span class="info-value">${new Intl.NumberFormat("es-DO", {
+              style: "currency",
+              currency: data.pago.moneda,
+            }).format(data.reserva.totalAbonado)}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Saldo Pendiente:</span>
+            <span class="info-value">${new Intl.NumberFormat("es-DO", {
+              style: "currency",
+              currency: data.pago.moneda,
+            }).format(data.reserva.saldoPendiente)}</span>
           </div>
         </div>
 
@@ -1786,6 +1818,10 @@ export function generateReciboHTML(data: ReciboData): string {
 
         <div class="payment-method">
           <div class="info-row">
+            <span class="info-label">Concepto:</span>
+            <span class="info-value">${data.pago.concepto}</span>
+          </div>
+          <div class="info-row">
             <span class="info-label">Método de Pago:</span>
             <span class="info-value">${data.pago.metodo}</span>
           </div>
@@ -1796,6 +1832,10 @@ export function generateReciboHTML(data: ReciboData): string {
           <div class="info-row">
             <span class="info-label">Fecha de Pago:</span>
             <span class="info-value">${data.pago.fecha}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Atendido por:</span>
+            <span class="info-value">${data.pago.registradoPor}</span>
           </div>
         </div>
 
