@@ -1,5 +1,5 @@
 # Elibry — Project Sprint State
-# as of 2026-08-04
+# as of 2026-08-14
 
 ---
 
@@ -674,6 +674,240 @@ QA ran all four in a fresh clone: exits 0, 0, 0, 0; `git diff 89cc76e HEAD --sta
 
 ---
 
+### 2026-08-14 — live-balance-recibo-form-fixes (T1–T9, COMMITTED, UNPUSHED)
+
+**Plan:** `docs/plans/live-balance-recibo-form-fixes.md` · **Slug:** `live-balance-recibo-form-fixes`
+**Baseline:** `85eb397` → **HEAD:** `63f468c`. **Commits (11, strict order):** `c6b5955` (T1) →
+`f976537` (T2) → `daa95ad` (T2 fix, round 2) → `ad2b3b1` (T3) → `1f99680` (T4) → `0700432` (T5) →
+`28614e0` (T6) → `9573a56` (T7) → `b411d49` (T8) → `f1ee46f` (T8b) → `63f468c` (T9).
+All nine tasks: QA PASS, lead decision A (T2 approved round 3 after two send-backs; T4 approved
+round 2 after one evidence-only send-back; T6 escalated to human on a process violation, content
+approved; T8 escalated to human on a genuine bug the plan's own AC manufactured, fixed in T8b and
+approved). Lead edited no source file. **Branch is UNPUSHED** —
+`git@github.com: Permission denied (publickey)`, exit 128; human action required. This local repo
+is the sprint's only copy.
+
+#### 1. What shipped — five items, user-facing
+
+1. **`/pagos/registrar` now shows the CURRENT (live) balance**, not a stale snapshot column, across
+   all three surfaces (selected-reserva "Balance:", search-result row amount, Monto prefill) and
+   both load paths (client search, and the `?reserva_id=` deep link, which prefilled nothing
+   before). A `0` balance now displays as `RD$0.00`, not the full price. An unknown/failed balance
+   read shows "No disponible" with a blank Monto — never a fabricated number. **Wiring is verified
+   in code and by unit tests; the live browser round-trip is UNVERIFIED (see §3).**
+2. **Reserva creation now redirects to the PROFORMA document**
+   (`/facturacion/proforma?reserva_id=<id>`) instead of its previous destination, for both the
+   admin and provisional (non-admin) creation paths, with a safe fallback (stays on
+   `/reservas/pendientes` + toast) if no id is returned. **Landing behaviour is UNVERIFIED (see
+   §3)** — the underlying deep-link contract is unchanged and was independently reasoned/verified
+   to resolve PROVISIONAL and PERMANENTE reservas identically.
+3. **"GEB" removed from 3 user-visible labels** — `/facturacion` cards now read "Proforma" /
+   "Voucher"; the `/facturacion/voucher` page heading reads "Voucher". All `.docx` source-of-truth
+   filenames and in-code references to them are untouched.
+4. **Hora Entrada / Hora Salida on reserva creation are now required, defaulted to 3:00 PM /
+   12:00 PM.** A blank field blocks submit with a named-field toast. Existing reservas (edit flow)
+   are unaffected — the default only applies to a fresh form.
+5. **Both RECIBO renderers — the printable HTML and the in-app `PaymentReceipt` dialog — now show a
+   company header, the client's dirección, the reserva código, concepto, the real registering user
+   (from `pagos.usuario`, since `pagos.registrado_por` has no writer anywhere in the repo), and
+   Total Abonado / Saldo Pendiente computed from the same `lib/finance.ts` module as everything
+   else** (no more inline arithmetic that could disagree). A same-sprint human-ruled fix (T8b)
+   closed a ~12%-of-two-installment-splits divergence between the displayed PARCIAL/PAGADA badge
+   and the Saldo Pendiente figure that the original acceptance criterion (AC4.5) had itself
+   introduced; QA re-verified 0 divergences across ~5.3M brute-force test splits after the fix.
+   Company data is a documented **PLACEHOLDER** (`lib/empresa-info.ts`), not real company data — a
+   companion doc (`docs/plans/empresa-info-settings-backlog.md`) records the migration path to a
+   real settings-driven source and flags a conflict with different company data already hardcoded
+   in the VOUCHER/CONFIRMACIÓN footer.
+
+#### 2. Evidence (gate: `npm run qa` = `tsc --noEmit` && `eslint .` && `vitest run`)
+
+- **T1** — `lib/finance.ts` + `montosDePagosDeReserva`, 8 new tests. QA ran 5 self-invented
+  mutations (2 genuinely pinned: HARD CALL #1's no-`estado`-filter and no-`|| 0`-coercion both went
+  RED as required). One narrow gap (Number vs. String coercion) filed as B-25 rather than expanded
+  in-task. PASS round 1. Commit `c6b5955`.
+- **T2** — `/pagos/registrar` live balance, all 3 surfaces + both load paths. Round 1 SEND-BACK:
+  stale-balance bug on deselect→reselect→failed-refetch, lint at 31 vs. the 30 ceiling with a
+  missed in-repo `eslint-disable` precedent, missing relocated-coverage-gap disclosure. Round 2
+  SEND-BACK: the lead-mandated invalidation fix from round 1 introduced a narrower regression (a
+  redundant chained-fetch failure could wipe a correctly-populated entry — an AC1.4 divergence).
+  Round 3 PASS (generation-guard fix; residual `gen` field ruled dead-code/naming debt, not a
+  defect, via a behaviour-identical mutation — see B-26). Commits `f976537`, `daa95ad`. This task
+  also triggered the lead's ruling that commits happen per-task going forward, and QA proved the
+  plan's stated baseline was stale (real: 28 files / 625 tests) — corrected in the plan file.
+- **T3** — GEB removed from 3 labels. QA diffed the repo-wide GEB grep across commit objects,
+  proving exactly 3 lines changed and every `.docx` source-of-truth reference survived. PASS round
+  1. Commit `ad2b3b1`.
+- **T4** — Hora Entrada/Salida required + defaulted. Round 1 SEND-BACK on evidence discipline only
+  (paraphrased rollback output instead of pasted output — no code change was needed). Round 2 PASS
+  after the dev pasted real output. QA independently executed `formatTimeWithPreference`, mapped
+  all five insert call sites, and confirmed `"00:00"` is truthy (no `stockin-zero-price` trap).
+  Commit `1f99680`.
+- **T5** — redirect to PROFORMA deep link. QA verified live that `/facturacion/proforma`'s list is
+  an unfiltered `select("*")` (PROVISIONAL and PERMANENTE resolve identically) and that
+  `crearRegistroProvisional` guarantees `id >= 1` (no falsy-valid-id trap). PASS round 1. Commit
+  `0700432`.
+- **T6** — new `lib/empresa-info.ts` placeholder company module. Code correct on every AC
+  (byte-compared values, all cited line numbers verified, runtime import test). Lead
+  **ESCALATED TO HUMAN**: the dev ran `git reset --hard` in the real (non-throwaway-clone) repo.
+  QA confirmed via reflog that nothing was lost, but the branch was 7 commits ahead of origin,
+  never pushed, on a repo with a known `.git/objects` root-ownership defect. **Human ruled: push to
+  origin. The push FAILED** (`Permission denied (publickey)`, exit 128) — unresolved, human action
+  required. Content approved; the no-`git reset --hard`-in-the-real-repo rule made binding for all
+  later tasks. Commit `28614e0`.
+- **T7** — `generateReciboHTML` + caller fortified. QA invented 10 hostile payloads beyond the
+  dev's five, including a hostile string injected into a `number`-typed field to bypass TypeScript;
+  a live mutation proved the escaping tests discriminate. Dev self-flagged its transitive-
+  `EMPRESA_PLACEHOLDER` design choice, which QA and lead ruled the better design and made binding
+  on T8. PASS round 1. Commit `9573a56`. Tests 633 → 646.
+- **T8** — `PaymentReceipt` company header + real attribution. Every AC PASS, but QA constructed
+  and reproduced against the real `lib/finance.ts` a genuine new divergence: routing display
+  through the rounded helper while AC4.5 mandated the `status:` ternary stay byte-identical
+  (unrounded) could show badge PARCIAL beside "Saldo Pendiente: RD$0.00" in ~527,576 of ~4.5M
+  two-installment cent splits (~12%). Lead **ESCALATED TO HUMAN** — AC4.5 itself manufactured the
+  bug; the dev complied correctly. **Human ruled: fix it now** (and separately declined the
+  `pagos.registrado_por` dead-field fix in the same view → B-31). Commit `b411d49`.
+- **T8b** — the fix (human-authorized override of AC4.5). QA re-ran its ~4.5M-split brute force
+  against the new ternary: 0 divergences. Plus 800,000 N-way split trials (3/5/10/50-way): 0. Plus
+  an opposite-direction over-correction probe; confirmed from `scripts/*.sql` that
+  `precio_total`/`pagos.monto` are `DECIMAL(10,2)`, so a genuine sub-cent debt cannot exist in real
+  data — the two values can now never disagree by construction. PASS. Commit `f1ee46f`.
+- **T9** — `docs/plans/empresa-info-settings-backlog.md`. QA verified every line number and quote
+  against live source character-by-character; the dev silently corrected a stale line reference
+  (plan says `document-generator.tsx:1596-1599`, real location after T7 is `1599-1604`) by reading
+  the real file — credited as correct behaviour. QA ran an exhaustive repo-wide
+  `EMPRESA_PLACEHOLDER` sweep proving the doc's consumer list complete. PASS round 1. Commit
+  `63f468c`.
+
+Final: **646 tests green**, 28 files, 0 lint errors, 30 warnings (flat).
+
+#### 3. Deferred / descoped — the honest UNVERIFIED list (verbatim)
+
+**This sandbox has NO network path to the Supabase project** (`getaddrinfo ENOTFOUND` on the real
+host, hit independently by multiple devs AND by QA) **and NO browser automation.** Therefore:
+- Every acceptance criterion requiring an observed live number or a browser round-trip is
+  **UNVERIFIED**, not passed: T2's AC1.1/AC1.3/AC1.5 and both failure-branch directions; T4's
+  AC5.3 DB-level "reserva count unchanged"; T5's AC2.1/AC2.2 browser landing; T7/T8's
+  rendered-output-in-a-real-browser claims.
+- What IS proven: code paths shown in diffs, pure-function math verified against the real
+  `lib/finance.ts`, greps run against real files, mutations actually executed, and 646 tests green.
+- **No test in the repo covers `/pagos/registrar`, `/reservas/ver/[id]`, `/reservas/crear`, or
+  `PaymentReceipt`.** QA proved this repeatedly with mutations that stayed green — including one
+  that silently undid T2's entire fix and one that resurrected the exact pre-fix bug. This is
+  `relocated-coverage-gap`, now on its 5th+ demonstrated instance, and B-23 (the jsdom/RTL harness,
+  whose dependencies are ALREADY INSTALLED) is the standing closure.
+- **Elibry's security posture is UNCHANGED.** Zero DDL this sprint, no new table, no RLS statement,
+  no auth change. HC-1 / ADR-0011 stands. **No line of this summary may claim Elibry became more
+  secure.**
+- **The branch is UNPUSHED** (SSH auth failure, human action required). This local repo is the only
+  copy.
+
+Not deferred as tasks (all nine planned tasks shipped), but explicitly out of scope this sprint per
+the frozen spec: B-19 (ANULADO exclusion ruling), B-20 (`calcularBalance` vs.
+`calcularBalanceReserva` reconciliation), B-21 (point-in-time recibo), B-22 (`max(id)+1` sequence
+collision risk, now user-visible in a URL), B-24 (wiring `lib/empresa-info.ts` to a real settings
+source).
+
+#### 4. Rollback path (whole sprint)
+
+Per lead ruling: `git revert <sha> --no-edit` in **strict reverse-commit order**, followed by
+`npx tsc --noEmit` after each step — QA proved `git revert` exits 0 while leaving a broken tree if
+the order is wrong.
+
+```
+git revert 63f468c --no-edit && npx tsc --noEmit   # T9
+git revert f1ee46f --no-edit && npx tsc --noEmit   # T8b
+git revert b411d49 --no-edit && npx tsc --noEmit   # T8
+git revert 9573a56 --no-edit && npx tsc --noEmit   # T7
+git revert 28614e0 --no-edit && npx tsc --noEmit   # T6
+git revert 0700432 --no-edit && npx tsc --noEmit   # T5
+git revert 1f99680 --no-edit && npx tsc --noEmit   # T4
+git revert ad2b3b1 --no-edit && npx tsc --noEmit   # T3
+git revert daa95ad --no-edit && npx tsc --noEmit   # T2 fix
+git revert f976537 --no-edit && npx tsc --noEmit   # T2
+git revert c6b5955 --no-edit && npx tsc --noEmit   # T1
+```
+
+Ends at pre-sprint baseline `85eb397`. No DB migration and no destructive DB operation occurred
+this sprint (zero DDL); nothing to unwind outside the repo. **The branch itself is unpushed** —
+reverting locally does not affect any remote, since none has this history yet.
+
+#### 5. Backlog produced this sprint (full text, filed at sprint close)
+
+- **B-19** — Product ruling: should `pagos.estado = 'ANULADO'` be excluded from paid totals? Also:
+  normalise the `estado` value space (`ACTIVO`/`ANULADO`/`CONFIRMADO`/`PENDIENTE`/`completado` all
+  exist in live writers).
+- **B-20** — Reconcile `calcularBalance` vs. `calcularBalanceReserva` semantics across
+  `/reservas/ver`, `/pagos/*`, `/clientes/balance*`, `/reservas/pendientes`, dashboard — one
+  definition of "saldo pendiente."
+- **B-21** — Point-in-time recibo: store/derive the balance as of the payment, instead of today's.
+- **B-22** — `crearRegistroProvisional`'s `max(id)+1` does not advance the `SERIAL` sequence →
+  future collision risk, now user-visible in a URL.
+- **B-23** — Build the jsdom/RTL component-mount harness (deps already installed). Closes
+  `relocated-coverage-gap` instead of relocating it a fifth (now sixth+) time.
+- **B-24** — Wire `lib/empresa-info.ts` to a real settings source (see
+  `docs/plans/empresa-info-settings-backlog.md`). Requires live `information_schema` verification
+  first. The real company data already exists hardcoded in the VOUCHER/CONFIRMACIÓN footer at
+  `lib/document-generator.tsx:1599-1604` — the two are inconsistent, and a human must choose the
+  canonical values.
+- **B-25** — Untested edge of `montosDePagosDeReserva`'s coercion contract (found by QA's T1
+  Mutation C). The suite does not distinguish the shipped `Number(p.reserva_id) === reservaId`
+  matcher from a hypothetical `String()`-based one: a future refactor to
+  `String(p.reserva_id) === String(reservaId)` would stay GREEN while silently diverging on
+  leading-zero string ids (`"07"` vs `7`) and on `null` ids (`null` vs `0`). The current
+  implementation is CORRECT (uses `Number()`, matching the AC's literal spec) — this is an untested
+  edge, not a bug. Deliberately not folded into T1 to avoid mid-task scope expansion.
+- **B-26** — T2's `gen` field. **Corrected framing:** the `pagosDirectLoadRef` REF is live and
+  load-bearing; only the **`gen` PROPERTY on it** is dead (written, never read — proven by a
+  behaviour-identical mutation that stripped `gen`/`pagosFetchGenRef` entirely). The mechanism is a
+  one-shot id token, not a true generation guard, despite the name. Recorded precisely so a future
+  reader isn't misled the way T9's QA nearly was.
+- **B-27** — T7: numeric/formatted fields in the HTML generators are protected against
+  `raw()`-wrap regressions ONLY by the static `raw(`-count guard, never by hostile fixtures
+  (`Intl.NumberFormat` output cannot contain HTML metacharacters). Keep the static guard required
+  for future generator work.
+- **B-28** — T5: comment the unreachable provisional-redirect fallback so a future
+  `provisional-system.ts` refactor doesn't delete it as dead code.
+- **B-29** — `lib/provisional-system.ts` returns `data?: any`, which TS collapses to `any` — every
+  caller's `?.` guard gets ZERO compile-time narrowing. Tighten to a discriminated union.
+- **B-30** — **CLOSED by T8b.** The saldo/badge divergence AC4.5 introduced at T8 is resolved: the
+  human ruled "fix it now," and QA's zero-divergence brute-force re-verification (§2, T8b) confirms
+  closure. Recorded as resolved, not as an open item.
+- **B-31** — `pagos.registrado_por` dead field still rendering "N/A" in the pagos table at
+  `app/reservas/ver/[id]/page.tsx:684`. Human was offered this fix and **explicitly declined it
+  this sprint.**
+- **B-32** — T8b: delete the now-fully-dead `saldoRestante`/`totalPagosRealizados` declarations at
+  `app/reservas/ver/[id]/page.tsx:192`/`:195`.
+- **B-33** — T8b: extract the `status:` ternary into an exported pure helper in `lib/` (per the
+  `crm-casos-page.test.ts` no-jsdom precedent) + a node-env regression test on the PARCIAL/PAGADA
+  boundary. Distinct from B-23.
+- **B-1 / B-9 (carried, worse):** file splits — `lib/document-generator.tsx` ~1880 lines,
+  `app/reservas/ver/[id]/page.tsx` 991 lines. Each split remains its own scoped task, never bundled.
+- **Stale plan line reference (recorded, not actioned in the plan file):** the plan's §9/§10
+  references to `lib/document-generator.tsx:1596-1599` are STALE — the real location after T7 is
+  `1599-1604`. The brain has a prior Elibry incident (`factura-numero-lookup-contract`, this file
+  above) where a false plan line was struck only in a session packet and not in the file, misleading
+  later readers; the same discipline applies here — recorded in the state file so it is not lost.
+- **T9 doc nits (recorded, not actioned):** an ADR-0012 gloss and a `parametros_sistema`
+  verification-asymmetry note in `docs/plans/empresa-info-settings-backlog.md`.
+- **Schema findings (this sprint's most reusable output):**
+  - **`pagos.registrado_por` has NO writer anywhere in the repo.** The column the app actually
+    populates is `pagos.usuario`.
+  - **`pagos.estado` receives FOUR different live values**: `ACTIVO`/`ANULADO` from
+    `/pagos/registrar`, `CONFIRMADO` and `PENDIENTE` from `/reservas/crear`, plus a DDL default
+    `'completado'` (`scripts/024`). `scripts/030`'s `status = 'COMPLETADO'` filter matches **no
+    live column at all**.
+
+**Not fixed, explicitly out of scope, must be surfaced again before any future sprint touches auth
+or RLS broadly:** HC-1 (no authentication, no RLS on ~29 pre-existing tables — ADR 0011) —
+unchanged by this sprint. Everything carried forward from prior entries (the
+`information_schema`-vs-`lib/supabase.ts` reconciliation, `.next/types` vs. page-exported helpers,
+`.docx` verification, the 5 demo rows in `comprobantes_fiscales`, client invoicing as an un-started
+project, credential rotation still not done, and — new this sprint — **the branch push failure,
+human action required**) is unchanged or worsened by this sprint.
+
+---
+
 ## Remaining backlog (highest priority first)
 
 _(see docs/plans/: feature-audit-sprint, module-audit-polish, crm-reservas-fixes,
@@ -691,4 +925,8 @@ un-started project), ADR 0012 (FACTURA # optional on CONFIRMACIÓN), schema-drif
 instances 3 & 4 (`productos.telefonos_json`/`emails_json` in zero migrations; the
 definitive `comprobantes_fiscales` shape), the concurrent-agents-on-one-tree
 recurrence, and the LOOKUP_FAILED toast task explicitly elevated ahead of generic
-backlog.)_
+backlog. See the 2026-08-14 live-balance-recibo-form-fixes entry above for B-19..B-33
+(the full sprint backlog set, including B-30 CLOSED and B-31 human-declined), the
+unpushed-branch state requiring human SSH-key action, and the two newest schema
+findings (`pagos.registrado_por` has no writer; `pagos.estado`'s four live values vs.
+`scripts/030`'s dead filter).)_
