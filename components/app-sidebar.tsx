@@ -8,21 +8,15 @@ import {
   DollarSign,
   FileText,
   BarChart3,
-  Settings,
   Truck,
   Package,
   ClipboardList,
   Receipt,
   Search,
-  UserCheck,
   CreditCard,
   FileSearch,
   Copy,
-  Activity,
-  Shield,
   TrendingUp,
-  UserCog,
-  Tags,
   UserPlus,
   Clock,
   Eye,
@@ -104,7 +98,6 @@ const menuItems = [
       { title: "Generar Proforma", url: "/facturacion/proforma", icon: Copy },
       { title: "Generar Voucher", url: "/facturacion/voucher", icon: FileText },
       { title: "Facturación Fiscal", url: "/facturacion/fiscal", icon: Calculator },
-      { title: "Buscar Documentos", url: "/facturacion/buscar", icon: Search },
     ],
   },
   {
@@ -124,40 +117,10 @@ const menuItems = [
     ],
   },
   {
-    title: "Proyectos",
-    icon: Building2,
-    items: [
-      { title: "Ver Proyectos", url: "/proyectos", icon: Eye },
-      { title: "Pagos de Proyectos", url: "/proyectos/pagos", icon: CreditCard },
-      { title: "Facturas de Proyectos", url: "/proyectos/facturas", icon: Receipt },
-    ],
-  },
-  {
     title: "Reportes",
     icon: BarChart3,
     items: [
       { title: "Dashboard", url: "/dashboard", icon: TrendingUp },
-      { title: "Estadísticas", url: "/reportes", icon: Activity },
-    ],
-  },
-  {
-    title: "Configuración",
-    icon: Settings,
-    items: [
-      { title: "General", url: "/configuracion", icon: Settings },
-      { title: "Colaboradores", url: "/configuracion/colaboradores", icon: UserCheck },
-      { title: "Datos Maestros", url: "/configuracion/maestros", icon: Tags },
-    ],
-  },
-]
-
-const adminItems = [
-  {
-    title: "Administración",
-    icon: Shield,
-    items: [
-      { title: "Panel Admin", url: "/admin", icon: UserCog },
-      { title: "Logs del Sistema", url: "/logs", icon: Activity },
     ],
   },
 ]
@@ -166,7 +129,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { isAdmin } = useUser()
 
-  const allMenuItems = isAdmin ? [...menuItems, ...adminItems] : menuItems
+  const allMenuItems = isAdmin ? [...menuItems] : menuItems
 
   return (
     <Sidebar collapsible="icon" {...props}>

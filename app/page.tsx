@@ -41,7 +41,6 @@ import {
   Shield,
   Home,
   BarChart3,
-  Settings,
   HeartHandshake,
   ClipboardList,
 } from "lucide-react"
@@ -996,40 +995,6 @@ function UserDashboard() {
           icon: FileText,
           path: "/facturacion/voucher",
           color: "text-purple-600",
-        },
-      ],
-    },
-
-    // Reportes
-    {
-      title: "Reportes",
-      description: "Análisis y reportes del sistema",
-      icon: BarChart3,
-      color: "bg-teal-500",
-      items: [
-        {
-          name: "Dashboard de Reportes",
-          description: "Vista general de reportes y métricas",
-          icon: BarChart3,
-          path: "/reportes",
-          color: "text-teal-600",
-        },
-      ],
-    },
-
-    // Configuración
-    {
-      title: "Configuración",
-      description: "Configuración del sistema y parámetros",
-      icon: Settings,
-      color: "bg-slate-500",
-      items: [
-        {
-          name: "Panel de Configuración",
-          description: "Configuración general del sistema",
-          icon: Settings,
-          path: "/configuracion",
-          color: "text-slate-600",
         },
       ],
     },

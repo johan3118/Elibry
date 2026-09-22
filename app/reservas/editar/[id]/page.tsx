@@ -59,6 +59,8 @@ import { useRouter, useParams } from "next/navigation"
 import { useUser } from "@/lib/user-context"
 import { actualizarRegistroProvisional } from "@/lib/provisional-system"
 import { TimeFormatToggle, formatTimeWithPreference } from "@/components/time-format-toggle"
+import { MoneyInput } from "@/components/money-input"
+import { parseMoneyInput } from "@/lib/money-format"
 
 interface Colaborador {
   id: number
@@ -1170,27 +1172,17 @@ export default function EditarReservaPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                         <div>
                           <Label>Precio Unitario *</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <MoneyInput
                             value={detalle.precio_unitario}
-                            onChange={(e) =>
-                              actualizarDetalle(index, "precio_unitario", Number.parseFloat(e.target.value) || 0)
-                            }
+                            onValueChange={(n) => actualizarDetalle(index, "precio_unitario", n)}
                             required
                           />
                         </div>
                         <div>
                           <Label>Descuento</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <MoneyInput
                             value={detalle.descuento}
-                            onChange={(e) =>
-                              actualizarDetalle(index, "descuento", Number.parseFloat(e.target.value) || 0)
-                            }
+                            onValueChange={(n) => actualizarDetalle(index, "descuento", n)}
                           />
                         </div>
                         <div>
@@ -1686,12 +1678,10 @@ export default function EditarReservaPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
                   <Label htmlFor="abonadoContabilidad">Abonado Contabilidad</Label>
-                  <Input
+                  <MoneyInput
                     id="abonadoContabilidad"
-                    type="number"
-                    step="0.01"
-                    value={formData.abonadoContabilidad}
-                    onChange={(e) => handleInputChange("abonadoContabilidad", e.target.value)}
+                    value={parseMoneyInput(formData.abonadoContabilidad) ?? 0}
+                    onValueChange={(n) => handleInputChange("abonadoContabilidad", n ? String(n) : "")}
                     placeholder="0.00"
                   />
                   <p className="text-xs text-gray-500 mt-1">Solo para registro contable, no afecta cálculos</p>

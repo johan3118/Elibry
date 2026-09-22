@@ -10,7 +10,6 @@ import {
   Calendar,
   DollarSign,
   FileText,
-  Settings,
   BarChart3,
   UserPlus,
   PackagePlus,
@@ -19,13 +18,6 @@ import {
   Building2,
   CreditCard,
   ClipboardList,
-  Activity,
-  Shield,
-  UserCog,
-  Sliders,
-  FolderOpen,
-  UserCheck,
-  Briefcase,
   Clock,
   HeartHandshake,
   AlertTriangle,
@@ -296,151 +288,6 @@ function DashboardContent() {
           icon: CreditCard,
           path: "/facturacion/voucher",
           color: "text-purple-600",
-        },
-        {
-          name: "Comprobantes Fiscales",
-          description: "Gestión de comprobantes fiscales",
-          icon: FileText,
-          path: "/facturacion/comprobantes",
-          color: "text-orange-600",
-        },
-      ],
-    },
-
-    // Proyectos
-    {
-      title: "Proyectos",
-      description: "Gestión de proyectos y seguimiento",
-      icon: Briefcase,
-      color: "bg-indigo-500",
-      items: [
-        {
-          name: "Lista de Proyectos",
-          description: "Ver todos los proyectos activos",
-          icon: Briefcase,
-          path: "/proyectos",
-          color: "text-indigo-600",
-        },
-        {
-          name: "Facturas de Proyectos",
-          description: "Facturas asociadas a proyectos",
-          icon: FileText,
-          path: "/proyectos/facturas",
-          color: "text-green-600",
-        },
-        {
-          name: "Pagos de Proyectos",
-          description: "Gestión de pagos por proyecto",
-          icon: DollarSign,
-          path: "/proyectos/pagos",
-          color: "text-blue-600",
-        },
-        {
-          name: "Buscar Pagos",
-          description: "Buscar pagos de proyectos",
-          icon: Search,
-          path: "/proyectos/buscar-pagos",
-          color: "text-orange-600",
-        },
-      ],
-    },
-
-    // Reportes
-    {
-      title: "Reportes",
-      description: "Análisis y reportes del sistema",
-      icon: BarChart3,
-      color: "bg-teal-500",
-      items: [
-        {
-          name: "Dashboard de Reportes",
-          description: "Vista general de reportes y métricas",
-          icon: BarChart3,
-          path: "/reportes",
-          color: "text-teal-600",
-        },
-      ],
-    },
-
-    // Logs del Sistema
-    {
-      title: "Logs del Sistema",
-      description: "Monitoreo y auditoría del sistema",
-      icon: Activity,
-      color: "bg-gray-500",
-      items: [
-        {
-          name: "Logs Generales",
-          description: "Ver logs generales del sistema",
-          icon: Activity,
-          path: "/logs",
-          color: "text-gray-600",
-        },
-        {
-          name: "Auditoría",
-          description: "Logs de auditoría y seguridad",
-          icon: Shield,
-          path: "/logs/auditoria",
-          color: "text-red-600",
-        },
-        {
-          name: "Rendimiento",
-          description: "Métricas de rendimiento del sistema",
-          icon: BarChart3,
-          path: "/logs/rendimiento",
-          color: "text-blue-600",
-        },
-      ],
-    },
-
-    // Configuración
-    {
-      title: "Configuración",
-      description: "Configuración del sistema y parámetros",
-      icon: Settings,
-      color: "bg-slate-500",
-      items: [
-        {
-          name: "Panel de Configuración",
-          description: "Configuración general del sistema",
-          icon: Settings,
-          path: "/configuracion",
-          color: "text-slate-600",
-        },
-        {
-          name: "Datos Maestros",
-          description: "Gestión de datos maestros",
-          icon: FolderOpen,
-          path: "/configuracion/maestros",
-          color: "text-blue-600",
-        },
-        {
-          name: "Usuarios",
-          description: "Gestión de usuarios del sistema",
-          icon: UserCog,
-          path: "/configuracion/usuarios",
-          color: "text-green-600",
-        },
-        {
-          name: "Parámetros",
-          description: "Configuración de parámetros",
-          icon: Sliders,
-          path: "/configuracion/parametros",
-          color: "text-purple-600",
-        },
-        {
-          name: "Tipos de Productos",
-          description: "Configurar tipos de productos",
-          icon: Package,
-          path: "/configuracion/tipos-productos",
-          color: "text-orange-600",
-        },
-        {
-          name: "Colaboradores",
-          description: "Gestión de colaboradores",
-          icon: UserCheck,
-          path: "/configuracion/colaboradores",
-          color: "text-teal-600",
         },
       ],
     },

@@ -321,16 +321,6 @@ export default function FacturacionPage() {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/facturacion/comprobantes">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <Receipt className="w-5 h-5" style={{ color: "#006600" }} />
-                  <span className="font-medium">Comprobantes Fiscales</span>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
         </div>
 
         {/* Search and Filters */}

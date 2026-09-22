@@ -1,5 +1,5 @@
 # Elibry — Project Sprint State
-# as of 2026-08-14
+# as of 2026-08-18
 
 ---
 
@@ -908,6 +908,173 @@ human action required**) is unchanged or worsened by this sprint.
 
 ---
 
+### 2026-08-18 — mockup-census-hide (T1–T10, uncommitted, on top of `3b551fe`)
+
+**Plan:** `docs/plans/mockup-census-hide.md` · **Slug:** `mockup-census-hide`
+**Grounding commit:** `3b551fe` ("fixes"). All ten tasks: QA PASS, lead decision A on every task
+(T7 required three send-backs — round 1 RISKY→B, round 2 RISKY→B, round 3 FAIL→C ESCALATE to the
+architect, who issued RULING R1 demoting the mechanism and owning the plan-level defect; round 4,
+documentation-only, PASS→A. T8 required one send-back — round 1 PASS-overall/AC4 FAIL→B; round 2
+RISKY→A, with AC4's false ESLint premise replaced by a causal boundary). Lead edited no source
+file. **Nothing is committed — the entire sprint sits in the working tree only, 25 files.**
+
+#### 1. What shipped (user-facing)
+
+18 fabricated-data mockup screens are replaced by one shared, honest "not available" stub
+(`components/modulo-no-disponible.tsx`) across Configuración (5 non-fiscal routes + the fiscal hub
++ `/facturacion/comprobantes`), Reportes, all 4 Proyectos routes, `/facturacion/buscar`,
+`/pagos/copias`, all 3 Logs routes, and `/admin`. The stub states the module is not available and
+invents no figure, name, count, date, or NCF. Every navigation entry point that reached those 18
+routes was also removed: the (dead-code) sidebar (`components/app-sidebar.tsx`), the live
+`/dashboard` hub (15 tiles) and `/facturacion` (1 tile), and the live non-admin landing page
+`app/page.tsx` (2 tiles — a human-authorized scope addition, see below). A new forcing-function
+test (`tests/mockup-census-stubs.test.ts`, 145 tests) mechanically pins all 18 routes to the shared
+stub. Approximately 5,512 lines of fabricated-data UI were deleted
+(856+1232+556+1677+955+163+35+38 across T2–T6 and T8–T10). A user now sees, on every one of those
+18 URLs, one honest sentence instead of invented revenue figures ("$45,231.89"), invented NCF
+numbers ("B0100000025", "B0404000001", four more), fake audit logs, sample document/receipt lists,
+or the real `/admin` approval-queue reader UI (its writer chain had zero callers repo-wide and is
+untouched). **Zero DDL, zero new tables, zero RLS statements, zero new Server Actions or `lib/`
+modules — this sprint only hides, per the frozen spec; nothing was built.**
+
+#### 2. Evidence (gate: `npm run qa` = `tsc --noEmit` && `eslint .` && `vitest run`)
+
+Final state: **`npm run qa` exit 0 — 28 warnings / 0 errors / 29 test files / 791 tests** (up from
+the pre-sprint baseline of 30 warnings / 28 files / 646 tests; the warning drop 30→28 came from T5
+deleting the `/admin` and `/logs` hooks; +145 tests came from T7).
+
+- **T1** — shared stub `components/modulo-no-disponible.tsx`, 24 lines, hook-free (no `"use
+  client"`, no `useState`/`useEffect`, no `createClient`, no `.from(`). QA PASS. Lead A.
+- **T2** — 5 non-fiscal Configuración routes stubbed, 856 deletions. QA PASS. Lead A.
+- **T3** — `/reportes` + 4 `/proyectos` routes stubbed, 1232 deletions; the pre-existing broken
+  `/proyectos/facturas/crear` link died with the stub, no route created. QA PASS. Lead A.
+- **T4** — `/facturacion/buscar` + `/pagos/copias` stubbed, 556 deletions. QA PASS. Lead A, ruling
+  T4 does **not** ride T6's fiscal gate, and that T7's `FORBIDDEN_LITERALS` list be amended to
+  include `B0100000001`/`B0100000002`.
+- **T5** [senior] — 3 `/logs` routes + `/admin` stubbed, 1677 deletions; a real Supabase
+  read/write surface over `acciones_pendientes` deleted outright (not relocated — `git
+  status --porcelain` showed no new file); `lib/admin-actions.ts` zero-diff, its two test files
+  untouched and green. QA PASS. Lead A.
+- **T6** [senior, FISCAL] — `/configuracion` + `/facturacion/comprobantes` stubbed, 955 deletions;
+  removed the fabricated NCF "B0100000025" and six invented NCF blocks including "B0404000001".
+  QA PASS. Lead A, **with the merge-block CARRIED FORWARD — fiscal sign-off is NOT discharged**
+  (see §4).
+- **T7** [senior] — forcing-function test `tests/mockup-census-stubs.test.ts`. Round 1: QA RISKY —
+  a PoC `const stats = {total:"1,234",trend:"+15.3%"}` passed 109/109 → B. Round 2: QA RISKY — a
+  one-keyword `var` swap passed 145/145, plus bare integers, `.push`/`Object.assign`, imported
+  constants, marker-less strings → B. Round 3: QA FAIL — destructuring + class-field initializer
+  bypasses, undocumented → C ESCALATE. Architect **RULING R1**: chose option (b) DEMOTE THE
+  MECHANISM, took ownership of a plan-level defect (AC #2 was unachievable by static
+  source-scanning), diagnosed the root cause as documenting the residual gap as a LIST (implies
+  completeness) instead of a CLASS, rejected option (a) citing ADR-0014's bounded-evidence rule.
+  Round 4 (documentation-only) → QA PASS → A.
+- **T8** — sidebar-entry removal, `components/app-sidebar.tsx`. Round 1: QA PASS overall but AC4
+  FAIL — QA built a minimal-diff alternative and lint-ran it, proving the `useUser` removal was
+  NOT ESLint-forced → B (lead refused to waive on zero-blast-radius grounds, to avoid a precedent
+  that AC-FAIL is waivable whenever extra scope looks harmless). Round 2: QA RISKY — mutation-
+  checked AC4's "decisive" ESLint proof by re-inserting a genuinely unused import; both `eslint`
+  and `tsc` stayed exit 0 (`.eslintrc.json` extends only `next/core-web-vitals`, `tsconfig.json`
+  has no `noUnusedLocals`/`noUnusedParameters` — **this repo never flags unused imports**) → A,
+  with AC4's false premise replaced by a causal boundary.
+- **T9** [senior] — live hub tile removal, `app/dashboard/page.tsx` + `app/facturacion/page.tsx`,
+  163 deletions, 0 insertions. QA PASS. Lead A. **First task removing REAL user-visible entry
+  points.** QA resolved a file-size contradiction: `app/dashboard/page.tsx` was 589 lines
+  pre-change (the plan's "562" was stale), now 436 — the ≤500-line breach for that file is
+  **closed**, not deferred.
+- **T10** [senior] — 2 hidden-route tiles removed from the non-admin landing page `app/page.tsx`,
+  35 deletions, 0 insertions. QA PASS. Lead A. **Human-authorised scope expansion** (see §3).
+
+#### 3. Required framing — record verbatim/accurately
+
+- **`[[relocated-coverage-gap]]` is PARTIALLY closed by this sprint** — the word "partially" is
+  mandatory. Mutation (a), "the caller stops calling the helper," is RED for all 18 call sites
+  (instances 1–5 of this mistake had zero caller pins; this sprint has 18, pinned by
+  `tests/mockup-census-stubs.test.ts`). Mutation (b), "the caller calls it and also does something
+  else," is **not** closed — rendered output and provenance remain open, deferred to **B-23**,
+  which stays the standing blocker and should be scoped as the next task in this family, not a
+  sixth extraction. Any statement that "T7 closes relocated-coverage-gap" without the word
+  *partially* is an overclaim.
+- **T8 is DEAD-CODE HYGIENE, not removal of a user-visible entry point** (HARD CALL A).
+  `AppSidebar` has zero importers repo-wide and `app/layout.tsx` renders no sidebar. T8's AC4:
+  the stated mechanism does not exist in this repo; `npm run qa` passing is **not** evidence the
+  import removals were ESLint-forced. The real boundary applied is causal — remove a symbol only
+  if this task's own deletions left it with zero remaining references, verified by `rg`, never by
+  citing ESLint.
+- **File-size, `app/dashboard/page.tsx`: 589 → 436 lines, now under the 500-line limit; breach
+  closed.** (The plan's stale "562" figure is not repeated.)
+- **T10 scope provenance**: the frozen spec named 24 files; the sprint touched 25. The 25th
+  (`app/page.tsx`) was architect-flagged as **HARD CALL B** → orchestrator-escalated →
+  **HUMAN-APPROVED** → isolated as its own single-file task (T10). Recorded as an authorised
+  deviation with this provenance chain, not as if it were always in scope.
+- **HARD CALL D**: "non-admin cannot reach `/admin` or `/logs` by direct URL" was **already false**
+  before this sprint (`middleware.ts` does no role check; `auth-guard.tsx` checks login only). Not
+  regressed by this sprint, but must be recorded as **NOT VERIFIED**, never signed off as PASS.
+
+#### 4. STILL OPEN — not discharged by this sprint
+
+- ⚠️ **FISCAL HUMAN GATE, NOT DISCHARGED.** T6 (stub of `/configuracion` and
+  `/facturacion/comprobantes`) and T9's two fiscal-adjacent tile removals (the
+  `/facturacion/comprobantes` and `/configuracion` tiles off `/dashboard`) are **ONE combined
+  gate, not two**, and require sign-off from a human with fiscal authority **BEFORE MERGE**, plus
+  a browser check that `/facturacion/comprobantes/registrar` still inserts into
+  `comprobantes_disponibles` and redirects cleanly. **Briefing:** fabricated fiscal data removed —
+  the NCF "Próximo: B0100000025" shown to ALL users on `/configuracion`; six invented NCF blocks
+  on `/facturacion/comprobantes` including `B0404000001`, `B0101000001`, `B0202000001`,
+  `B0111000525`, `B0212001100`, `B0303000001`, plus invented usage-percentage counts; a fabricated
+  RNC "131-12345-6" and invented company details on `/configuracion`. What a user sees now: one
+  honest "not available" message on both routes, no numbers. What still works: `app/facturacion/
+  comprobantes/registrar/page.tsx` is byte-identical, including its live insert at line 91.
+- ⚠️ **HARD CALL C, still owed a ruling**: the comprobantes stub keeps exactly one link to
+  `/facturacion/comprobantes/registrar` so the live fiscal write path retains a UI entrance.
+  Provisional pending the human's ruling at the gate above; dropping it is a one-line change
+  inside T6's file.
+- **All browser-render and live-DB acceptance criteria remain HUMAN-OWED** — no browser
+  automation, no network path to the real Supabase project in this workspace. None may be signed
+  off as PASS.
+
+#### 5. Deferred / backlog (not bundled)
+
+- Delete `lib/admin-actions.ts` + its orphaned wrappers — blocked by two test files
+  (`tests/pagos.provisional.test.ts`, `tests/configuracion.actions.test.ts`) still importing it.
+- The pre-existing broken `/proyectos/facturas/crear` link — dies with T3's stub, not fixed, no
+  route created.
+- Real BUILD for `colaboradores` / `datos_maestros` / `tipos_productos` — real tables, needs live
+  schema verification first.
+- Route-level admin gating — needs real auth (ADR-0011); HARD CALL D stays NOT VERIFIED until
+  then.
+- **B-23** — jsdom/RTL component-mount harness, the only real closure for
+  `relocated-coverage-gap`'s remaining mutation (b).
+- **New AST-pass item** (architect, RULING R1 backlog): replace the demoted regex heuristics in
+  T7 with a TypeScript-compiler (`typescript@5.7.3`, already a devDependency) pass over the 18
+  stub files asserting zero `ObjectLiteralExpression`/`ArrayLiteralExpression` nodes, with a
+  single JSX-attribute carve-out (e.g. `style={{ … }}`). A strictly-better bound, **not** a
+  closure — bare rendered literals and `JSON.parse` of a string still pass it; B-23 remains the
+  actual closure. Allocate the next free number after B-33.
+- QA's T10 item: a standalone regression check that `app/page.tsx`'s `modulos` array never
+  re-adds `/reportes` or `/configuracion`. Cannot go inside T7's `PATHS` list (would break the
+  `=== 18` assertion and the ≤30-line bound) — needs its own small test.
+
+#### 6. Rollback path (whole sprint — nothing committed)
+
+Nothing is committed — the entire sprint sits in the working tree only, 25 files. **Destructive
+git ops are BANNED this sprint.** Per-file rollback: `git show HEAD:<path> > <path>` for each of
+the 23 rewritten/edited files; `rm <path>` for the 2 new files (`components/modulo-no-disponible.tsx`,
+`tests/mockup-census-stubs.test.ts`), which did not exist at HEAD. Whole-sprint rollback is the
+same operation repeated across all 25 files; there is no commit range to `git revert` yet. Once
+this sprint is committed in a future session, `git revert <sha>` per task becomes available and
+should be preferred over the per-file `git show` restore.
+
+**Not fixed, explicitly out of scope, must be surfaced again before any future sprint touches auth
+or RLS broadly:** HC-1 (no authentication, no RLS on ~29 pre-existing tables — ADR 0011) —
+unchanged by this sprint (RLS exposure only shrinks: 18 screens' worth of `anon` reads removed).
+Everything carried forward from prior entries (the `information_schema`-vs-`lib/supabase.ts`
+reconciliation, `.next/types` vs. page-exported helpers, `.docx` verification, the 5 demo rows in
+`comprobantes_fiscales`, client invoicing as an un-started project, credential rotation still not
+done, and the branch-push failure from the 2026-08-14 entry, human action required) is unchanged
+by this sprint.
+
+---
+
 ## Remaining backlog (highest priority first)
 
 _(see docs/plans/: feature-audit-sprint, module-audit-polish, crm-reservas-fixes,
@@ -929,4 +1096,10 @@ backlog. See the 2026-08-14 live-balance-recibo-form-fixes entry above for B-19.
 (the full sprint backlog set, including B-30 CLOSED and B-31 human-declined), the
 unpushed-branch state requiring human SSH-key action, and the two newest schema
 findings (`pagos.registrado_por` has no writer; `pagos.estado`'s four live values vs.
-`scripts/030`'s dead filter).)_
+`scripts/030`'s dead filter). See the 2026-08-18 mockup-census-hide entry above for the
+FISCAL HUMAN GATE not yet discharged (T6 + T9's two fiscal-adjacent tile removals, one
+combined gate), HARD CALL C (comprobantes stub's one link to the live registrar page,
+still owed a ruling), `[[relocated-coverage-gap]]`'s partial closure (B-23 still the
+standing blocker), the new AST-pass backlog item (after B-33), and the delete-
+lib/admin-actions.ts / real-BUILD-for-colaboradores-etc. / route-level-admin-gating
+items carried forward from that sprint.)_
