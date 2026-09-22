@@ -8,6 +8,14 @@ before running either script. Spec: `docs/plans/db-cleanup-keep-one-reserva.md`
 - `01-cleanup-dry-run.sql` — read-only, zero risk, run first.
 - `02-cleanup-execute.sql` — destructive, real `COMMIT`, no dry-run mode.
 
+**Verification status — read this before trusting any behavior claim below:**
+nothing described in this runbook has been executed against a live database
+this sprint — the target host has no DNS answer and its REST endpoint
+returns 521. Every statement in this file about what `01` or `02` will do is
+derived by reading their current SQL text, not by observing a live run.
+Treat every such description as **UNVERIFIED** unless and until you have
+personally run the scripts and confirmed the outcome yourself.
+
 **Design note — why two files instead of one dry-run-via-ROLLBACK script:**
 The original plan wrapped everything in one file that ended in `ROLLBACK;` by
 default. That was rejected: the Supabase SQL editor wraps whatever you paste
@@ -100,13 +108,18 @@ psql "<live connection string>" -v ON_ERROR_STOP=1 -f 01-cleanup-dry-run.sql
 ```
 
 or paste `01-cleanup-dry-run.sql` into the Supabase SQL editor. It cannot
-write anything — see the file's own header for why. It produces 5 result
+write anything — see the file's own header for why. It produces 7 result
 grids: **Query 1** — loud abort-or-proceed status if the reserva isn't found
 or isn't unique. **Query 2** — the resolved KEEP set (ids). **Query 3** — the
 main table: `rows_total` / `rows_to_keep` / `rows_to_delete` per business
 table. **Query 4** — `comprobantes_fiscales` existence + shape (ambiguous,
 see below). **Query 5** — existence of the 9 tables named in `CLAUDE.md` that
-no migration in `scripts/*.sql` declares.
+no migration in `scripts/*.sql` declares. **Query 6** — loud payment-
+destruction warning: how many payments the kept reserva has today, and that
+ALL of them (plus every other payment in the database) will be permanently
+deleted by `02`. **Query 7** — the three-entity name-assertion preview:
+MATCH/MISMATCH for cliente, producto, and suplidor, previewing `02`'s
+GUARD 3 with the same ILIKE patterns.
 
 ## Step 4 — Read the report
 
@@ -122,6 +135,30 @@ no migration in `scripts/*.sql` declares.
   `scripts/001-create-tables.sql:220-260`, so `02` will remove more rows from
   `auditoria` than `01` reported. This is documented in `02`'s own comments
   at the `auditoria` step and is expected, not a bug.
+- **Query 6 (payments)** must read the kept reserva's current payment count
+  and state plainly that ALL of it (plus every other payment in the database)
+  will be destroyed — zero is a valid, non-error answer here, not a blank or
+  a failure.
+- **Query 7 (name-match preflight)** must read **MATCH** for cliente,
+  producto, and suplidor. If any row reads MISMATCH, **stop — do not run
+  `02` — investigate first** (see the Step 5 checklist below).
+- **Balance columns.** `02` does **not** recompute or write to any of
+  `balance_reserva`, `balance_general`, `balance_abonado`, `monto_pagado`, or
+  `abonado_contabilidad` — it contains zero `UPDATE` statements anywhere
+  (`02`'s own SECTION 5 header explains why: the repo's migrations disagree
+  with each other on what these columns mean, and the live schema cannot be
+  introspected this sprint to settle it). Instead, `02`'s **final report
+  result grid** carries one disclosure column per candidate balance column
+  that exists on `reservas` at run time, reading either `ABSENT from this
+  schema...` or `PRESENT, current value = X -- POSSIBLY STALE: ...`. Any
+  `PRESENT` value may be stale immediately after the run, because every
+  `pagos` row was already destroyed — trust the app's own read-time
+  recomputation (`app/reservas/ver/[id]/page.tsx`, `lib/finance.ts`) over a
+  stored column. No manual balance repair is performed or required by this
+  script; a manual spot-check of the disclosed values is optional, not
+  mandatory. **UNVERIFIED** — this describes what `02`'s SQL text does; it
+  has not been executed against a live database this sprint (see the note at
+  the top of this file).
 - **RLS caveat:** `reserva_pasajeros` / `reserva_ocupaciones` have RLS enabled
   (`scripts/061-create-reserva-pasajeros-ocupaciones.sql:93-94`) with a policy
   granted `TO authenticated` only, and neither table has `FORCE ROW LEVEL
@@ -153,6 +190,14 @@ no migration in `scripts/*.sql` declares.
   Only needed if you plan to insert new rows via the raw sequence (most of
   this app's write paths compute `id` client-side instead — see
   `lib/provisional-system.ts:132-142`).
+- [ ] **Name-match preflight.** Confirm `01-cleanup-dry-run.sql`'s Query 7
+  (three-entity MATCH/MISMATCH report) reads **MATCH** for cliente, producto,
+  and suplidor. These previews use the exact same ILIKE patterns as `02`'s
+  GUARD 3, so `02` would abort on the same row that reads MISMATCH here — but
+  do not rely on that abort as your safety net. If **any** row reads
+  MISMATCH: **stop. Do not run `02`. Investigate first** — it means the
+  reserva/cliente/producto/suplidor this script is about to operate on does
+  not look like the one it was designed for.
 
 ---
 
@@ -197,18 +242,28 @@ automatically and nothing is changed. Watch for:
 
 **Español:** Se conserva la reserva con código `RES-1787875561067`, su
 cliente (`cliente_id`), su producto (`producto_id`), el suplidor de ese
-producto (`suplidor_id`), y todo lo que depende de esa reserva: sus líneas de
-detalle (`reserva_detalles`), sus pasajeros (`reserva_pasajeros`), sus
-ocupaciones de habitación (`reserva_ocupaciones`), y sus pagos (`pagos`).
-También se conservan los registros de `cambios_provisionales` y
-`acciones_pendientes` que apunten (por texto, no por FK) a cualquiera de los
-registros anteriores. Todo lo demás en las tablas de negocio se elimina.
+producto (`suplidor_id`), y lo que depende de esa reserva: sus líneas de
+detalle (`reserva_detalles`), sus pasajeros (`reserva_pasajeros`), y sus
+ocupaciones de habitación (`reserva_ocupaciones`). **`pagos` NO tiene keep
+set: se eliminan TODOS los pagos de la base de datos sin condición,
+INCLUYENDO los pagos de la propia reserva conservada** — decisión del
+operador tomada explícitamente esta sesión (ver el amendment de
+`docs/plans/db-cleanup-keep-one-reserva.md`). Esto es irreversible sin el
+backup del Paso 1: no existe un script de deshacer para `pagos`. También se
+conservan los registros de `cambios_provisionales` y `acciones_pendientes`
+que apunten (por texto, no por FK) a cualquiera de los registros anteriores.
+Todo lo demás en las tablas de negocio se elimina.
 
 **English:** The reserva with code `RES-1787875561067` is kept, along with its
 client (`cliente_id`), its product (`producto_id`), that product's supplier
-(`suplidor_id`), and everything downstream of that reserva: its line items
-(`reserva_detalles`), its passengers (`reserva_pasajeros`), its room
-occupancies (`reserva_ocupaciones`), and its payments (`pagos`).
+(`suplidor_id`), and what depends on that reserva: its line items
+(`reserva_detalles`), its passengers (`reserva_pasajeros`), and its room
+occupancies (`reserva_ocupaciones`). **`pagos` has NO keep set: ALL payment
+history in the whole database is destroyed unconditionally, INCLUDING the
+kept reserva's own payments** — an operator decision made explicitly this
+session (see the amendment section of
+`docs/plans/db-cleanup-keep-one-reserva.md`). This is irreversible without
+the Step 1 backup: there is no undo script for `pagos`.
 `cambios_provisionales` and `acciones_pendientes` rows that reference (by
 text, not FK) any of the rows above are also kept. Everything else in the
 business tables is deleted.
@@ -235,9 +290,11 @@ business tables is deleted.
 
 ## Rollback
 
-- **These three files themselves** are new, untracked additions to the repo.
-  To undo just having written them:
-  `rm docs/migracion/01-cleanup-dry-run.sql docs/migracion/02-cleanup-execute.sql docs/migracion/README-cleanup.md`
+- **These three files are tracked in this repository's git history** — they
+  are not new or untracked. To undo edits made to them in a given task,
+  restore each affected file to the version it had at the start of that task
+  using your version-control tool's standard single-file restore operation,
+  targeting only these three files — never the whole working tree.
 - **A run of `01-cleanup-dry-run.sql`** needs no rollback — it cannot change
   anything.
 - **A run of `02-cleanup-execute.sql` that aborted** (any `RAISE EXCEPTION`,
@@ -245,5 +302,5 @@ business tables is deleted.
   whole transaction.
 - **A run of `02-cleanup-execute.sql` that committed successfully** can only
   be undone by **restoring the Step 1 backup**. There is no undo script — a
-  `DELETE` of the majority of the business data has no inverse once
-  committed.
+  `DELETE` of the majority of the business data, INCLUDING every `pagos` row
+  in the database (see "The KEEP set" above), has no inverse once committed.

@@ -69,13 +69,16 @@ keep_suplidor AS (
   FROM productos p
   WHERE p.id IN (SELECT id FROM keep_producto) AND p.suplidor_id IS NOT NULL
 ),
-keep_pago AS (
-  SELECT id, cliente_id FROM pagos WHERE reserva_id IN (SELECT id FROM keep_reserva)
-),
+-- keep_pago CTE REMOVED (db-cleanup-decisions-amend, T4): pagos has NO keep
+-- set — 02 unconditionally deletes every payment row (see QUERY 6 below for
+-- the loud destruction count).
 keep_cliente AS (
+  -- AMENDMENT: resolves from keep_reserva.cliente_id ONLY (matches 02 after
+  -- its T1 amendment) — no longer UNIONed with pagos.cliente_id. That UNION
+  -- used to protect a client whose pagos.cliente_id diverged from
+  -- reservas.cliente_id; pagos has no keep set now, so that protection no
+  -- longer applies. Deliberate, not a bug (plan amendment §8 edge case).
   SELECT cliente_id AS id FROM keep_reserva WHERE cliente_id IS NOT NULL
-  UNION
-  SELECT cliente_id AS id FROM keep_pago WHERE cliente_id IS NOT NULL
 ),
 keep_detalle AS (
   SELECT id FROM reserva_detalles WHERE reserva_id IN (SELECT id FROM keep_reserva)
@@ -89,10 +92,10 @@ keep_ocupacion AS (
 SELECT 'reserva.id' AS entidad, id::text AS valor FROM keep_reserva
 UNION ALL SELECT 'reserva.cliente_id (raw, may be NULL)', cliente_id::text FROM keep_reserva
 UNION ALL SELECT 'reserva.producto_id (raw, may be NULL)', producto_id::text FROM keep_reserva
-UNION ALL SELECT 'keep_cliente.id (reserva + pagos union)', id::text FROM keep_cliente
+UNION ALL SELECT 'keep_cliente.id (reserva.cliente_id only)', id::text FROM keep_cliente
 UNION ALL SELECT 'keep_producto.id', id::text FROM keep_producto
 UNION ALL SELECT 'keep_suplidor.id', id::text FROM keep_suplidor
-UNION ALL SELECT 'keep_pago.id', id::text FROM keep_pago
+UNION ALL SELECT 'pagos: ALL rows will be deleted, no keep set', NULL::text
 UNION ALL SELECT 'keep_detalle.id (reserva_detalles)', id::text FROM keep_detalle
 UNION ALL SELECT 'keep_pasajero.id (reserva_pasajeros)', id::text FROM keep_pasajero
 UNION ALL SELECT 'keep_ocupacion.id (reserva_ocupaciones)', id::text FROM keep_ocupacion
@@ -122,13 +125,16 @@ keep_suplidor AS (
   FROM productos p
   WHERE p.id IN (SELECT id FROM keep_producto) AND p.suplidor_id IS NOT NULL
 ),
-keep_pago AS (
-  SELECT id, cliente_id FROM pagos WHERE reserva_id IN (SELECT id FROM keep_reserva)
-),
+-- keep_pago CTE REMOVED (db-cleanup-decisions-amend, T4): pagos has NO keep
+-- set — 02 unconditionally deletes every payment row (see QUERY 6 below for
+-- the loud destruction count).
 keep_cliente AS (
+  -- AMENDMENT: resolves from keep_reserva.cliente_id ONLY (matches 02 after
+  -- its T1 amendment) — no longer UNIONed with pagos.cliente_id. That UNION
+  -- used to protect a client whose pagos.cliente_id diverged from
+  -- reservas.cliente_id; pagos has no keep set now, so that protection no
+  -- longer applies. Deliberate, not a bug (plan amendment §8 edge case).
   SELECT cliente_id AS id FROM keep_reserva WHERE cliente_id IS NOT NULL
-  UNION
-  SELECT cliente_id AS id FROM keep_pago WHERE cliente_id IS NOT NULL
 ),
 keep_detalle AS (
   SELECT id FROM reserva_detalles WHERE reserva_id IN (SELECT id FROM keep_reserva)
@@ -147,7 +153,8 @@ keep_cambios AS (
      OR (cp.tabla_afectada = 'clientes'           AND cp.registro_id IN (SELECT id FROM keep_cliente))
      OR (cp.tabla_afectada = 'productos'          AND cp.registro_id IN (SELECT id FROM keep_producto))
      OR (cp.tabla_afectada = 'suplidores'         AND cp.registro_id IN (SELECT id FROM keep_suplidor))
-     OR (cp.tabla_afectada = 'pagos'              AND cp.registro_id IN (SELECT id FROM keep_pago))
+     -- AMENDMENT (T4, mirrors 02's T1): always false — no pago row ever survives the full wipe.
+     -- OR (cp.tabla_afectada = 'pagos'              AND cp.registro_id IN (SELECT id FROM keep_pago))
      OR (cp.tabla_afectada = 'reserva_detalles'   AND cp.registro_id IN (SELECT id FROM keep_detalle))
      OR (cp.tabla_afectada = 'reserva_pasajeros'  AND cp.registro_id IN (SELECT id FROM keep_pasajero))
      OR (cp.tabla_afectada = 'reserva_ocupaciones' AND cp.registro_id IN (SELECT id FROM keep_ocupacion))
@@ -159,7 +166,8 @@ keep_acciones AS (
      OR (ap.tabla_objetivo = 'clientes'            AND ap.registro_id IN (SELECT id FROM keep_cliente))
      OR (ap.tabla_objetivo = 'productos'           AND ap.registro_id IN (SELECT id FROM keep_producto))
      OR (ap.tabla_objetivo = 'suplidores'          AND ap.registro_id IN (SELECT id FROM keep_suplidor))
-     OR (ap.tabla_objetivo = 'pagos'               AND ap.registro_id IN (SELECT id FROM keep_pago))
+     -- AMENDMENT (T4, mirrors 02's T1): always false — no pago row ever survives the full wipe.
+     -- OR (ap.tabla_objetivo = 'pagos'               AND ap.registro_id IN (SELECT id FROM keep_pago))
      OR (ap.tabla_objetivo = 'reserva_detalles'    AND ap.registro_id IN (SELECT id FROM keep_detalle))
      OR (ap.tabla_objetivo = 'reserva_pasajeros'   AND ap.registro_id IN (SELECT id FROM keep_pasajero))
      OR (ap.tabla_objetivo = 'reserva_ocupaciones' AND ap.registro_id IN (SELECT id FROM keep_ocupacion))
@@ -184,9 +192,12 @@ SELECT 'suplidores', 'A', count(*),
        count(*) FILTER (WHERE id NOT IN (SELECT id FROM keep_suplidor))
 FROM suplidores
 UNION ALL
+-- AMENDMENT (T4, mirrors 02's T1): HARDWIRED, not derived from live data —
+-- pagos has NO keep set. rows_to_keep is always 0 and rows_to_delete always
+-- equals rows_total, structurally, regardless of what any row looks like.
 SELECT 'pagos', 'A', count(*),
-       count(*) FILTER (WHERE id IN (SELECT id FROM keep_pago)),
-       count(*) FILTER (WHERE id NOT IN (SELECT id FROM keep_pago))
+       0,
+       count(*)
 FROM pagos
 UNION ALL
 SELECT 'reserva_detalles', 'A', count(*),
@@ -286,3 +297,165 @@ FROM (VALUES
 ) AS t(tabla)
 LEFT JOIN pg_stat_user_tables s ON s.schemaname = 'public' AND s.relname = t.tabla
 ORDER BY t.tabla;
+
+
+-- =============================================================================
+-- QUERY 6 — Loud payment-destruction warning (db-cleanup-decisions-amend, T4).
+-- pagos has NO keep set: 02 unconditionally deletes EVERY row of `pagos`,
+-- including whatever the kept reserva has today. Zero payments is a real,
+-- non-error answer (decisions/0012-elibry-confirmacion-without-factura-
+-- numero non-collapse) — it must never read as "lookup failed" or blank.
+-- =============================================================================
+SELECT
+  'RES-1787875561067' AS reserva,
+  n.n_pagos_actuales AS pagos_actuales_de_esta_reserva,
+  CASE
+    WHEN n.n_pagos_actuales = 0 THEN 'OK — this reserva currently has 0 payments. 02 will still permanently delete ALL pagos rows in the ENTIRE database (unconditional wipe) — this reserva simply has none of its own to lose.'
+    ELSE '*** WARNING *** this reserva currently has ' || n.n_pagos_actuales || ' payment(s). ALL of them WILL BE PERMANENTLY DELETED by 02 — pagos has no keep set, the wipe is unconditional and covers every reserva, not only the ones being removed.'
+  END AS estado_pagos
+FROM (
+  SELECT count(*) AS n_pagos_actuales
+  FROM pagos
+  WHERE reserva_id IN (SELECT id FROM reservas WHERE codigo = 'RES-1787875561067')
+) n;
+
+
+-- =============================================================================
+-- QUERY 7 — Three-entity name-assertion preview (db-cleanup-decisions-amend,
+-- T5). Reports MATCH/MISMATCH for cliente, producto, suplidor using the SAME
+-- candidate-column self-detect logic and the SAME canonical ILIKE literals as
+-- 02-cleanup-execute.sql's GUARD 3 — copied byte-for-byte out of that file,
+-- never retyped from memory (mistakes/weak-backstop-guard: this report is
+-- the operator's only preview of the guard, so it must never be weaker or
+-- stronger than what 02 will actually check).
+-- Non-collapsing outcome states, matching Guard 3 exactly
+-- (decisions/0012-elibry-confirmacion-without-factura-numero):
+--   MATCH                            — a candidate name value matches the pattern
+--   MISMATCH (no-match)              — a candidate value is present but does not match
+--   MISMATCH (name-null-or-empty)    — every candidate column exists but is NULL/empty
+--   MISMATCH (no-candidate-column)   — no candidate name column exists at run time
+--   MISMATCH (suplidor-id-null)      — suplidor only: productos.suplidor_id IS NULL
+--   MISMATCH (reserva.*_id IS NULL)  — cliente_id/producto_id already NULL
+--                                      (Guard 2 in 02 would already abort on this)
+-- If ANY row below reads anything other than MATCH: STOP. Do not run
+-- 02-cleanup-execute.sql. Investigate first (README-cleanup.md Step 5).
+-- This report is READ-ONLY: it writes only to its own temp table, never to
+-- any business table, and never RAISE EXCEPTIONs (unlike Guard 3 in 02) so
+-- that a dry run can never abort — it can only report.
+-- =============================================================================
+DROP TABLE IF EXISTS pg_temp._name_match_report;
+CREATE TEMP TABLE _name_match_report (entidad text, estado text, detalle text);
+
+DO $$
+DECLARE
+  v_cliente_id    integer;
+  v_producto_id   integer;
+  v_suplidor_id   integer;
+  v_col           text;
+  v_val           text;
+  v_cols_found    integer;
+  v_any_nonnull   boolean;
+  v_matched       boolean;
+  v_cliente_cols  text[] := ARRAY['nombre_completo', 'razon_social', 'nombre_comercial'];
+  v_producto_cols text[] := ARRAY['nombre_producto', 'nombre_original'];
+  v_suplidor_cols text[] := ARRAY['razon_social', 'nombre_comercial'];
+BEGIN
+  SELECT cliente_id, producto_id INTO v_cliente_id, v_producto_id
+  FROM reservas WHERE codigo = 'RES-1787875561067';
+
+  -- CLIENTE ---------------------------------------------------------------
+  v_cols_found := 0; v_any_nonnull := false; v_matched := false;
+  IF v_cliente_id IS NOT NULL THEN
+    FOREACH v_col IN ARRAY v_cliente_cols LOOP
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'clientes' AND column_name = v_col
+      ) THEN
+        v_cols_found := v_cols_found + 1;
+        EXECUTE format('SELECT %I FROM clientes WHERE id = $1', v_col) INTO v_val USING v_cliente_id;
+        IF v_val IS NOT NULL AND btrim(v_val) <> '' THEN
+          v_any_nonnull := true;
+          IF v_val ILIKE '%JROSA%ASESORA%VIAJES%' THEN v_matched := true; END IF;
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+  IF v_cliente_id IS NULL THEN
+    INSERT INTO _name_match_report VALUES ('cliente', 'MISMATCH (reserva.cliente_id IS NULL)', 'Cannot verify — Guard 2 in 02 will already abort on this.');
+  ELSIF v_cols_found = 0 THEN
+    INSERT INTO _name_match_report VALUES ('cliente', 'MISMATCH (no-candidate-column)', 'clientes has none of nombre_completo, razon_social, nombre_comercial at run time.');
+  ELSIF NOT v_any_nonnull THEN
+    INSERT INTO _name_match_report VALUES ('cliente', 'MISMATCH (name-null-or-empty)', format('clientes.id = %s has every candidate name column NULL or empty.', v_cliente_id));
+  ELSIF NOT v_matched THEN
+    INSERT INTO _name_match_report VALUES ('cliente', 'MISMATCH (no-match)', format('clientes.id = %s name does not match expected pattern %%JROSA%%ASESORA%%VIAJES%%.', v_cliente_id));
+  ELSE
+    INSERT INTO _name_match_report VALUES ('cliente', 'MATCH', format('clientes.id = %s matches expected pattern %%JROSA%%ASESORA%%VIAJES%%.', v_cliente_id));
+  END IF;
+
+  -- PRODUCTO --------------------------------------------------------------
+  v_cols_found := 0; v_any_nonnull := false; v_matched := false;
+  IF v_producto_id IS NOT NULL THEN
+    FOREACH v_col IN ARRAY v_producto_cols LOOP
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'productos' AND column_name = v_col
+      ) THEN
+        v_cols_found := v_cols_found + 1;
+        EXECUTE format('SELECT %I FROM productos WHERE id = $1', v_col) INTO v_val USING v_producto_id;
+        IF v_val IS NOT NULL AND btrim(v_val) <> '' THEN
+          v_any_nonnull := true;
+          IF v_val ILIKE '%BAHIA PRINCIPE%EXPLORE%LEGEND%' THEN v_matched := true; END IF;
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+  IF v_producto_id IS NULL THEN
+    INSERT INTO _name_match_report VALUES ('producto', 'MISMATCH (reserva.producto_id IS NULL)', 'Cannot verify — Guard 2 in 02 will already abort on this.');
+  ELSIF v_cols_found = 0 THEN
+    INSERT INTO _name_match_report VALUES ('producto', 'MISMATCH (no-candidate-column)', 'productos has none of nombre_producto, nombre_original at run time.');
+  ELSIF NOT v_any_nonnull THEN
+    INSERT INTO _name_match_report VALUES ('producto', 'MISMATCH (name-null-or-empty)', format('productos.id = %s has every candidate name column NULL or empty.', v_producto_id));
+  ELSIF NOT v_matched THEN
+    INSERT INTO _name_match_report VALUES ('producto', 'MISMATCH (no-match)', format('productos.id = %s name does not match expected pattern %%BAHIA PRINCIPE%%EXPLORE%%LEGEND%%.', v_producto_id));
+  ELSE
+    INSERT INTO _name_match_report VALUES ('producto', 'MATCH', format('productos.id = %s matches expected pattern %%BAHIA PRINCIPE%%EXPLORE%%LEGEND%%.', v_producto_id));
+  END IF;
+
+  -- SUPLIDOR ----------------------------------------------------------------
+  v_suplidor_id := NULL;
+  IF v_producto_id IS NOT NULL THEN
+    SELECT suplidor_id INTO v_suplidor_id FROM productos WHERE id = v_producto_id;
+  END IF;
+
+  v_cols_found := 0; v_any_nonnull := false; v_matched := false;
+  IF v_suplidor_id IS NOT NULL THEN
+    FOREACH v_col IN ARRAY v_suplidor_cols LOOP
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'suplidores' AND column_name = v_col
+      ) THEN
+        v_cols_found := v_cols_found + 1;
+        EXECUTE format('SELECT %I FROM suplidores WHERE id = $1', v_col) INTO v_val USING v_suplidor_id;
+        IF v_val IS NOT NULL AND btrim(v_val) <> '' THEN
+          v_any_nonnull := true;
+          IF v_val ILIKE '%OPERAHOTEL%' THEN v_matched := true; END IF;
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+  IF v_producto_id IS NULL THEN
+    INSERT INTO _name_match_report VALUES ('suplidor', 'MISMATCH (reserva.producto_id IS NULL)', 'Cannot resolve — no producto to look up a suplidor from.');
+  ELSIF v_suplidor_id IS NULL THEN
+    INSERT INTO _name_match_report VALUES ('suplidor', 'MISMATCH (suplidor-id-null)', format('productos.id = %s (the kept producto) has suplidor_id IS NULL.', v_producto_id));
+  ELSIF v_cols_found = 0 THEN
+    INSERT INTO _name_match_report VALUES ('suplidor', 'MISMATCH (no-candidate-column)', 'suplidores has none of razon_social, nombre_comercial at run time.');
+  ELSIF NOT v_any_nonnull THEN
+    INSERT INTO _name_match_report VALUES ('suplidor', 'MISMATCH (name-null-or-empty)', format('suplidores.id = %s has every candidate name column NULL or empty.', v_suplidor_id));
+  ELSIF NOT v_matched THEN
+    INSERT INTO _name_match_report VALUES ('suplidor', 'MISMATCH (no-match)', format('suplidores.id = %s name does not match expected pattern %%OPERAHOTEL%%.', v_suplidor_id));
+  ELSE
+    INSERT INTO _name_match_report VALUES ('suplidor', 'MATCH', format('suplidores.id = %s matches expected pattern %%OPERAHOTEL%%.', v_suplidor_id));
+  END IF;
+END $$;
+
+SELECT * FROM _name_match_report ORDER BY entidad;

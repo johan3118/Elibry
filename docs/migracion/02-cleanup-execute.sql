@@ -74,12 +74,140 @@ BEGIN
 END $$;
 
 -- =============================================================================
+-- GUARD 3 (db-cleanup-decisions-amend, T2) — preflight three-entity name
+-- assertion. Resolves the kept reserva's cliente name, producto name, and
+-- that producto's suplidor name, and aborts unless all three match a
+-- canonical pattern, case-insensitively (ILIKE). Purpose: Guards 1-2 only
+-- prove a reserva with this exact codigo exists and has non-NULL FKs — they
+-- cannot tell a wrong-DB/wrong-seed run apart from the real one. This guard
+-- can, by checking who those FKs actually point to.
+-- Name columns are NEVER hardcoded to a single column — each candidate list
+-- below is checked against information_schema.columns at run time
+-- (mistakes/schema-source-of-truth: the live DB is unreachable this sprint,
+-- scripts/*.sql is corroboration only, so this file self-detects or refuses).
+-- Canonical ILIKE patterns (owned here — 01's preview report, T5, copies
+-- these verbatim; they must never drift, plan §7):
+--   cliente:  '%JROSA%ASESORA%VIAJES%'
+--   producto: '%BAHIA PRINCIPE%EXPLORE%LEGEND%'
+--   suplidor: '%OPERAHOTEL%'
+-- Four distinct abort states, never collapsed into one generic "MISMATCH"
+-- (decisions/0012-elibry-confirmacion-without-factura-numero):
+--   (a) a candidate name value is present but does not match the pattern
+--   (b) every candidate name column exists but is NULL/empty
+--   (c) no candidate name column exists on that table at run time
+--   (d) suplidor only: productos.suplidor_id IS NULL, so no suplidor row can
+--       even be resolved (Guard 2 checks cliente_id/producto_id, not
+--       suplidor_id — this state is reachable today).
+-- =============================================================================
+DO $$
+DECLARE
+  v_cliente_id    integer;
+  v_producto_id   integer;
+  v_suplidor_id   integer;
+  v_col           text;
+  v_val           text;
+  v_cols_found    integer;
+  v_any_nonnull   boolean;
+  v_matched       boolean;
+  v_cliente_cols  text[] := ARRAY['nombre_completo', 'razon_social', 'nombre_comercial'];
+  v_producto_cols text[] := ARRAY['nombre_producto', 'nombre_original'];
+  v_suplidor_cols text[] := ARRAY['razon_social', 'nombre_comercial'];
+BEGIN
+  SELECT cliente_id, producto_id INTO v_cliente_id, v_producto_id
+  FROM reservas WHERE codigo = 'RES-1787875561067';
+
+  -- CLIENTE ---------------------------------------------------------------
+  v_cols_found := 0; v_any_nonnull := false; v_matched := false;
+  FOREACH v_col IN ARRAY v_cliente_cols LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'clientes' AND column_name = v_col
+    ) THEN
+      v_cols_found := v_cols_found + 1;
+      EXECUTE format('SELECT %I FROM clientes WHERE id = $1', v_col) INTO v_val USING v_cliente_id;
+      IF v_val IS NOT NULL AND btrim(v_val) <> '' THEN
+        v_any_nonnull := true;
+        IF v_val ILIKE '%JROSA%ASESORA%VIAJES%' THEN v_matched := true; END IF;
+      END IF;
+    END IF;
+  END LOOP;
+  IF v_cols_found = 0 THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (cliente, no-candidate-column) — clientes has none of the candidate name columns (nombre_completo, razon_social, nombre_comercial) at run time. Cannot verify cliente identity. Refusing to proceed.';
+  ELSIF NOT v_any_nonnull THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (cliente, name-null-or-empty) — clientes.id = % has every candidate name column NULL or empty. Cannot verify cliente identity. Refusing to proceed.', v_cliente_id;
+  ELSIF NOT v_matched THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (cliente, no-match) — clientes.id = % name does not match expected pattern %%JROSA%%ASESORA%%VIAJES%%. This does not look like the intended cliente to keep. Refusing to proceed.', v_cliente_id;
+  END IF;
+
+  -- PRODUCTO --------------------------------------------------------------
+  v_cols_found := 0; v_any_nonnull := false; v_matched := false;
+  FOREACH v_col IN ARRAY v_producto_cols LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'productos' AND column_name = v_col
+    ) THEN
+      v_cols_found := v_cols_found + 1;
+      EXECUTE format('SELECT %I FROM productos WHERE id = $1', v_col) INTO v_val USING v_producto_id;
+      IF v_val IS NOT NULL AND btrim(v_val) <> '' THEN
+        v_any_nonnull := true;
+        IF v_val ILIKE '%BAHIA PRINCIPE%EXPLORE%LEGEND%' THEN v_matched := true; END IF;
+      END IF;
+    END IF;
+  END LOOP;
+  IF v_cols_found = 0 THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (producto, no-candidate-column) — productos has none of the candidate name columns (nombre_producto, nombre_original) at run time. Cannot verify producto identity. Refusing to proceed.';
+  ELSIF NOT v_any_nonnull THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (producto, name-null-or-empty) — productos.id = % has every candidate name column NULL or empty. Cannot verify producto identity. Refusing to proceed.', v_producto_id;
+  ELSIF NOT v_matched THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (producto, no-match) — productos.id = % name does not match expected pattern %%BAHIA PRINCIPE%%EXPLORE%%LEGEND%%. This does not look like the intended producto to keep. Refusing to proceed.', v_producto_id;
+  END IF;
+
+  -- SUPLIDOR ----------------------------------------------------------------
+  SELECT suplidor_id INTO v_suplidor_id FROM productos WHERE id = v_producto_id;
+  IF v_suplidor_id IS NULL THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (suplidor, suplidor-id-null) — productos.id = % (the kept producto) has suplidor_id IS NULL. No suplidor row can be resolved to verify. Refusing to proceed.', v_producto_id;
+  END IF;
+
+  v_cols_found := 0; v_any_nonnull := false; v_matched := false;
+  FOREACH v_col IN ARRAY v_suplidor_cols LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'suplidores' AND column_name = v_col
+    ) THEN
+      v_cols_found := v_cols_found + 1;
+      EXECUTE format('SELECT %I FROM suplidores WHERE id = $1', v_col) INTO v_val USING v_suplidor_id;
+      IF v_val IS NOT NULL AND btrim(v_val) <> '' THEN
+        v_any_nonnull := true;
+        IF v_val ILIKE '%OPERAHOTEL%' THEN v_matched := true; END IF;
+      END IF;
+    END IF;
+  END LOOP;
+  IF v_cols_found = 0 THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (suplidor, no-candidate-column) — suplidores has none of the candidate name columns (razon_social, nombre_comercial) at run time. Cannot verify suplidor identity. Refusing to proceed.';
+  ELSIF NOT v_any_nonnull THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (suplidor, name-null-or-empty) — suplidores.id = % has every candidate name column NULL or empty. Cannot verify suplidor identity. Refusing to proceed.', v_suplidor_id;
+  ELSIF NOT v_matched THEN
+    RAISE EXCEPTION 'ABORT: GUARD 3 (suplidor, no-match) — suplidores.id = % name does not match expected pattern %%OPERAHOTEL%%. This does not look like the intended suplidor to keep. Refusing to proceed.', v_suplidor_id;
+  END IF;
+END $$;
+
+-- =============================================================================
 -- SECTION 1 — Materialise the entire KEEP set BEFORE any DELETE.
--- Why materialise (not inline CTEs per statement): _keep_cliente reads `pagos`.
--- If `pagos` were deleted before `clientes`, a re-evaluated inline CTE could
--- return a SMALLER client set on a later statement and the kept client could
--- be deleted. Materialising first makes delete order irrelevant to what the
--- keep set contains. ON COMMIT DROP — these never outlive this transaction.
+-- Materialising first makes delete order irrelevant to what the keep set
+-- contains, regardless of which tables have already been touched.
+-- ON COMMIT DROP — these never outlive this transaction.
+--
+-- AMENDMENT (db-cleanup-decisions-amend, T1): `pagos` has NO keep set anymore
+-- — every row is destroyed unconditionally (Step 3 below), so `_keep_cliente`
+-- no longer reads `pagos` at all; it is built from `_keep_reserva.cliente_id`
+-- alone. The old rationale that used to live here ("materialise because
+-- _keep_cliente reads pagos") is factually dead and has been removed.
+-- Deliberate behaviour consequence: previously, a `pagos.cliente_id` that
+-- diverged from `reservas.cliente_id` was protected via a UNION with
+-- `_keep_pago`, so that client survived even though it was not the kept
+-- reserva's own client. That protection is gone — such a client is now
+-- deleted like any other non-kept client. This is intentional, not a bug
+-- (plan §8 edge cases).
 -- =============================================================================
 CREATE TEMP TABLE _keep_reserva ON COMMIT DROP AS
   SELECT id, cliente_id, producto_id FROM reservas WHERE codigo = 'RES-1787875561067';
@@ -92,13 +220,12 @@ CREATE TEMP TABLE _keep_suplidor ON COMMIT DROP AS
   FROM productos p
   WHERE p.id IN (SELECT id FROM _keep_producto) AND p.suplidor_id IS NOT NULL;
 
-CREATE TEMP TABLE _keep_pago ON COMMIT DROP AS
-  SELECT id, cliente_id FROM pagos WHERE reserva_id IN (SELECT id FROM _keep_reserva);
+-- _keep_pago temp table REMOVED (db-cleanup-decisions-amend, T1): `pagos` has
+-- no keep set — every row is destroyed unconditionally (Step 3). See the
+-- Section 1 header comment above for the deliberate behaviour consequence.
 
 CREATE TEMP TABLE _keep_cliente ON COMMIT DROP AS
-  SELECT cliente_id AS id FROM _keep_reserva WHERE cliente_id IS NOT NULL
-  UNION
-  SELECT cliente_id AS id FROM _keep_pago WHERE cliente_id IS NOT NULL;
+  SELECT cliente_id AS id FROM _keep_reserva WHERE cliente_id IS NOT NULL;
 
 CREATE TEMP TABLE _keep_detalle ON COMMIT DROP AS
   SELECT id FROM reserva_detalles WHERE reserva_id IN (SELECT id FROM _keep_reserva);
@@ -121,7 +248,11 @@ SELECT
   (SELECT count(*) FROM _keep_detalle)    AS n_detalles,
   (SELECT count(*) FROM _keep_pasajero)   AS n_pasajeros,
   (SELECT count(*) FROM _keep_ocupacion)  AS n_ocupaciones,
-  (SELECT count(*) FROM _keep_pago)       AS n_pagos;
+  -- AMENDMENT (T1): repurposed. This is no longer a "before" count to compare
+  -- against an "after" count — pagos has no keep set. It counts payments that
+  -- WILL be destroyed by Step 3's unconditional DELETE, sourced directly from
+  -- `pagos` (the removed `_keep_pago` temp table no longer exists).
+  (SELECT count(*) FROM pagos WHERE reserva_id IN (SELECT id FROM _keep_reserva)) AS n_pagos_a_destruir;
 
 -- =============================================================================
 -- SECTION A — business-data deletes, leaf-first. Ordered so no FK is violated
@@ -139,8 +270,9 @@ DELETE FROM seguimiento_casos;
 
 -- Step 3 — pagos MUST precede reservas and clientes: both its FKs are NO
 -- ACTION (scripts/025-fix-pagos-table.sql:106,110) and would block those
--- deletes otherwise.
-DELETE FROM pagos WHERE id NOT IN (SELECT id FROM _keep_pago);
+-- deletes otherwise. AMENDMENT (T1): unconditional — pagos has no keep set,
+-- ALL rows are destroyed, including any belonging to the kept reserva.
+DELETE FROM pagos;
 
 -- Step 4 — reserva_pasajeros before reserva_ocupaciones, to avoid pointless
 -- ON DELETE SET NULL (ocupacion_id) churn (scripts/061:84-86) on rows about to
@@ -219,7 +351,8 @@ WHERE NOT (
   OR (cp.tabla_afectada = 'clientes'            AND cp.registro_id IN (SELECT id FROM _keep_cliente))
   OR (cp.tabla_afectada = 'productos'           AND cp.registro_id IN (SELECT id FROM _keep_producto))
   OR (cp.tabla_afectada = 'suplidores'          AND cp.registro_id IN (SELECT id FROM _keep_suplidor))
-  OR (cp.tabla_afectada = 'pagos'               AND cp.registro_id IN (SELECT id FROM _keep_pago))
+  -- AMENDMENT (T1): always false — no pago row ever survives the full wipe.
+  -- OR (cp.tabla_afectada = 'pagos'               AND cp.registro_id IN (SELECT id FROM _keep_pago))
   OR (cp.tabla_afectada = 'reserva_detalles'    AND cp.registro_id IN (SELECT id FROM _keep_detalle))
   OR (cp.tabla_afectada = 'reserva_pasajeros'   AND cp.registro_id IN (SELECT id FROM _keep_pasajero))
   OR (cp.tabla_afectada = 'reserva_ocupaciones' AND cp.registro_id IN (SELECT id FROM _keep_ocupacion))
@@ -231,7 +364,8 @@ WHERE NOT (
   OR (ap.tabla_objetivo = 'clientes'            AND ap.registro_id IN (SELECT id FROM _keep_cliente))
   OR (ap.tabla_objetivo = 'productos'           AND ap.registro_id IN (SELECT id FROM _keep_producto))
   OR (ap.tabla_objetivo = 'suplidores'          AND ap.registro_id IN (SELECT id FROM _keep_suplidor))
-  OR (ap.tabla_objetivo = 'pagos'               AND ap.registro_id IN (SELECT id FROM _keep_pago))
+  -- AMENDMENT (T1): always false — no pago row ever survives the full wipe.
+  -- OR (ap.tabla_objetivo = 'pagos'               AND ap.registro_id IN (SELECT id FROM _keep_pago))
   OR (ap.tabla_objetivo = 'reserva_detalles'    AND ap.registro_id IN (SELECT id FROM _keep_detalle))
   OR (ap.tabla_objetivo = 'reserva_pasajeros'   AND ap.registro_id IN (SELECT id FROM _keep_pasajero))
   OR (ap.tabla_objetivo = 'reserva_ocupaciones' AND ap.registro_id IN (SELECT id FROM _keep_ocupacion))
@@ -411,8 +545,11 @@ BEGIN
   IF v_n_ocupaciones <> v_before.n_ocupaciones THEN
     RAISE EXCEPTION 'POST-CHECK FAILED: reserva_ocupaciones count for kept reserva changed from % to %. Aborting.', v_before.n_ocupaciones, v_n_ocupaciones;
   END IF;
-  IF v_n_pagos <> v_before.n_pagos THEN
-    RAISE EXCEPTION 'POST-CHECK FAILED: pagos count for kept reserva changed from % to %. Aborting.', v_before.n_pagos, v_n_pagos;
+  -- AMENDMENT (T1): strictly stronger than the old "before vs after equality"
+  -- check — pagos has no keep set, so the ONLY correct count after the
+  -- unconditional wipe is exactly 0, for every reserva including this one.
+  IF v_n_pagos <> 0 THEN
+    RAISE EXCEPTION 'POST-CHECK FAILED: expected 0 pagos rows for kept reserva after the unconditional wipe, found %. Aborting, nothing will be committed.', v_n_pagos;
   END IF;
 
   RAISE NOTICE 'All post-condition assertions passed. reserva RES-1787875561067 (id=%) is intact: cliente_id=%, producto_id=%, detalles=%, pasajeros=%, ocupaciones=%, pagos=%.',
@@ -420,8 +557,55 @@ BEGIN
 END $$;
 
 -- =============================================================================
+-- SECTION 5 — BALANCE DISCLOSURE (db-cleanup-decisions-amend, T3). READ-ONLY —
+-- zero UPDATE statements anywhere in this file, on purpose. HC-1 branch (b)
+-- chosen over branch (a) [recompute the denormalised balance columns]: (1)
+-- scripts/027:53 sets balance_reserva = precio_total - abonado_contabilidad
+-- while scripts/030:35 sets balance_reserva = precio_total and puts the
+-- payment-derived figure in balance_general instead — the repo contradicts
+-- itself, and scripts/*.sql is not evidence of live semantics anyway
+-- (mistakes/schema-source-of-truth); (2) the live schema is unreachable this
+-- sprint (briefing: DNS + REST both down), so there is nothing to introspect
+-- to settle it; (3) app/reservas/ver/[id]/page.tsx:196-215 already recomputes
+-- balance_reserva/balance_general/balance_abonado in memory from live `pagos`
+-- via lib/finance.ts before rendering, so the operator-facing screen already
+-- self-heals without this script writing to a single money column.
+-- Candidate columns are detected at run time via information_schema.columns,
+-- never hardcoded (mistakes/schema-source-of-truth): balance_reserva,
+-- balance_general, balance_abonado, monto_pagado, abonado_contabilidad
+-- (scripts/007:34-36, 026:53-54 — corroboration only, not proof). "Absent"
+-- and "present, value = X" are reported as distinct, non-collapsed states
+-- (decisions/0012-elibry-confirmacion-without-factura-numero); any present
+-- value is flagged possibly stale because Step 3 above already deleted every
+-- `pagos` row unconditionally.
+-- =============================================================================
+CREATE TEMP TABLE _balance_disclosure (balance_column text, note text) ON COMMIT DROP;
+
+DO $$
+DECLARE
+  v_col  text;
+  v_id   integer;
+  v_val  text;
+  v_cols text[] := ARRAY['balance_reserva','balance_general','balance_abonado','monto_pagado','abonado_contabilidad'];
+BEGIN
+  SELECT id INTO v_id FROM _keep_reserva;
+  FOREACH v_col IN ARRAY v_cols LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'reservas' AND column_name = v_col
+    ) THEN
+      EXECUTE format('SELECT %I::text FROM reservas WHERE id = $1', v_col) INTO v_val USING v_id;
+      INSERT INTO _balance_disclosure VALUES (v_col, format('PRESENT, current value = %s -- POSSIBLY STALE: pagos was unconditionally wiped above (Step 3) and this column was NOT recomputed here (disclosure only, HC-1 branch b); verify by hand or trust the app''s read-time recompute (app/reservas/ver/[id]/page.tsx:196-215, lib/finance.ts).', COALESCE(v_val, 'NULL')));
+    ELSE
+      INSERT INTO _balance_disclosure VALUES (v_col, 'ABSENT from this schema at run time -- nothing to disclose.');
+    END IF;
+  END LOOP;
+END $$;
+
+-- =============================================================================
 -- FINAL REPORT — one result grid, because RAISE NOTICE is not reliably
--- surfaced by the Supabase SQL editor.
+-- surfaced by the Supabase SQL editor. Balance disclosure columns (SECTION 5)
+-- are appended here so they reach the operator the same way, not NOTICE-only.
 -- =============================================================================
 SELECT
   'RES-1787875561067' AS reserva_kept,
@@ -430,7 +614,15 @@ SELECT
   (SELECT producto_id FROM reservas WHERE codigo = 'RES-1787875561067') AS producto_id,
   (SELECT count(*) FROM reserva_detalles WHERE reserva_id IN (SELECT id FROM _keep_reserva)) AS n_detalles,
   (SELECT count(*) FROM reserva_pasajeros WHERE reserva_id IN (SELECT id FROM _keep_reserva)) AS n_pasajeros,
+  -- n_pagos is 0 by construction (AMENDMENT T1): this SELECT runs after Step
+  -- 3's unconditional `DELETE FROM pagos;`, so no pago row can exist here
+  -- regardless of reserva_id.
   (SELECT count(*) FROM pagos WHERE reserva_id IN (SELECT id FROM _keep_reserva)) AS n_pagos,
+  (SELECT note FROM _balance_disclosure WHERE balance_column = 'balance_reserva') AS balance_reserva_disclosure,
+  (SELECT note FROM _balance_disclosure WHERE balance_column = 'balance_general') AS balance_general_disclosure,
+  (SELECT note FROM _balance_disclosure WHERE balance_column = 'balance_abonado') AS balance_abonado_disclosure,
+  (SELECT note FROM _balance_disclosure WHERE balance_column = 'monto_pagado') AS monto_pagado_disclosure,
+  (SELECT note FROM _balance_disclosure WHERE balance_column = 'abonado_contabilidad') AS abonado_contabilidad_disclosure,
   current_user, session_user, current_database();
 
 -- =============================================================================

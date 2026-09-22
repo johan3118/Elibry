@@ -820,3 +820,66 @@ involved. (Rolling back a *committed execution of the SQL* is a different thing
 entirely — that is restore-from-backup, runbook step 1.)
 
 PLAN_PATH: docs/plans/db-cleanup-keep-one-reserva.md
+
+---
+
+## Amendment (db-cleanup-decisions-amend, 2026-09-22)
+
+This section is **strictly additive**, appended after the plan's original
+content (lines 1-822 above) ends. Nothing above this line was rewritten,
+reordered, or deleted — the original design record stands as written. This
+section records three decision changes made against that original design,
+resolved during the `db-cleanup-decisions-amend` sprint. Full acceptance
+criteria, technical approach, and reasoning for all three live in the
+sprint's own plan, `docs/plans/db-cleanup-decisions-amend.md` — this section
+is the decision record, not a redesign, and adds no new SQL or
+implementation detail beyond naming the three files that were amended.
+
+### Decision 1 — `pagos` has no keep set; full unconditional wipe
+
+**Recorded per: the operator, via direct question, this session.**
+
+This supersedes §4's `_keep_pago` definition above (line 248, which defined
+a `pagos` keep-set scoped to the payments of the kept reserva) and §5 step 3
+above (line 287, which removed non-kept `pagos` rows only, preserving that
+keep set). As of this decision, `pagos` has **no keep set at all**: every row
+in the table is removed unconditionally, including any payment belonging to
+the reserva this plan otherwise keeps. This is a deliberate behaviour change
+from the original design recorded in §4/§5, not a correction of an error in
+it.
+
+### Decision 2 — three-entity name-assertion guard (Guard 3)
+
+**Recorded per: the operator, via direct question, this session.**
+
+A new preflight requirement, absent from this plan's original design: before
+touching any row, the destructive script now resolves the kept reserva's
+client name, product name, and that product's supplier name, and refuses to
+proceed unless all three match a canonical, case-insensitive substring
+pattern specific to the intended data. The read-only companion script
+previews the same check. This addition runs before §4's KEEP set is ever
+materialised and does not alter §4 or §5's original content.
+
+### Decision 3 — Section B stays commented out, unchanged
+
+**Recorded per: the operator, via direct question, this session.**
+
+Section B (`usuarios`, `usuarios_sistema`, `colaboradores`, `datos_maestros`,
+`parametros_sistema`, `tipos_productos`, `configuracion_empresa`,
+`permisos_roles`, `comprobantes_disponibles`) remains **fully commented out
+by default**, exactly as this plan's §5 "Section B" originally specified.
+`comprobantes_disponibles` is explicitly reaffirmed unchanged: it still
+requires separate fiscal sign-off before anyone uncomments it, on account of
+the live DGII NCF sequence state it holds. This amendment neither uncomments
+nor proposes uncommenting any Section B line.
+
+### Files amended by these three decisions
+
+- `docs/migracion/02-cleanup-execute.sql`
+- `docs/migracion/01-cleanup-dry-run.sql`
+- `docs/migracion/README-cleanup.md`
+
+(`docs/plans/db-cleanup-keep-one-reserva.md` — this file — is amended only by
+this Amendment section itself.)
+
+PLAN_PATH: docs/plans/db-cleanup-keep-one-reserva.md
