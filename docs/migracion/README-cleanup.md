@@ -9,12 +9,16 @@ before running either script. Spec: `docs/plans/db-cleanup-keep-one-reserva.md`
 - `02-cleanup-execute.sql` — destructive, real `COMMIT`, no dry-run mode.
 
 **Verification status — read this before trusting any behavior claim below:**
-nothing described in this runbook has been executed against a live database
-this sprint — the target host has no DNS answer and its REST endpoint
-returns 521. Every statement in this file about what `01` or `02` will do is
-derived by reading their current SQL text, not by observing a live run.
-Treat every such description as **UNVERIFIED** unless and until you have
-personally run the scripts and confirmed the outcome yourself.
+The target Supabase project IS reachable and its credentials (`.env.local`)
+are verified live and functional. Verified repeatedly during the 2026-09-22
+clientes-import sprint: T1 ran full introspection live via Supabase CLI
+(`reports/t01-dev.md`); T3 executed the entire 1,384-line dry run live twice,
+42/42 checks PASS (`reports/t03-dev-r3.md`); T5 fired three guard blocks live
+over psql (`reports/t05-dev.md`); T2 round 4 ran a full smoke gate live
+(`reports/t02-dev-r4.md`). However, nothing described in this runbook about
+what the cleanup scripts `01` or `02` *themselves* will do has been executed
+against a live database — those scripts remain **UNVERIFIED** unless and until
+you have personally run them and confirmed the outcome yourself.
 
 **Design note — why two files instead of one dry-run-via-ROLLBACK script:**
 The original plan wrapped everything in one file that ended in `ROLLBACK;` by
@@ -33,10 +37,11 @@ instead of trying to detect it at runtime.
 
 ## Step 1 — Backup (do this before anything else)
 
-The credentials in this repo's `.env.local` are **dead** — the Supabase
-project they point to no longer exists. You must obtain **live** credentials
-for the actual target database before you can do anything below, including
-the backup.
+The credentials in this repo's `.env.local` are verified live and functional.
+You can use them directly to connect to the Supabase project for the backup
+and subsequent steps below. This was confirmed during the 2026-09-22
+clientes-import sprint through live database access (`reports/t01-dev.md`,
+`reports/t02-dev-r4.md`, `reports/t03-dev-r3.md`, `reports/t05-dev.md`).
 
 Once you have live credentials, take one of these backups:
 

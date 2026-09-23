@@ -1,5 +1,5 @@
 # Elibry — Project Sprint State
-# as of 2026-08-18
+# as of 2026-09-23
 
 ---
 
@@ -1075,6 +1075,70 @@ by this sprint.
 
 ---
 
+### 2026-09-22 — clientes-xlsx-import (T1–T9, uncommitted, artifacts only — import NOT executed)
+
+**Plan:** `docs/plans/clientes-xlsx-import.md` + amendment `docs/plans/clientes-xlsx-import-amendment-a.md`
+· **Slug:** `clientes-xlsx-import`. **State-file gap flagged:** no entry existed here between
+2026-08-18 and this one; this sprint's own scratchpad records that an intervening
+`2026-09-22-db-cleanup-decisions-amend` sprint ran (no live DB then; left `clientes` at 1 row) and
+was **never logged in this file** — backfill owed as its own follow-up, not fixed in this entry.
+
+#### 1. What shipped — an ARTIFACT SET, not an import
+
+Nine tasks (T1–T8 per plan, plus T9 human-authorized mid-sprint) produced a reviewable,
+re-runnable SQL artifact pair to import 1,231 `clientes` rows from the pinned
+`docs/migracion-clientes.xlsx`, relocating JROSA id 15→1185, plus an operator runbook.
+**The import was NOT executed by any agent.** `clientes` still holds exactly 1 row (id=15, JROSA);
+`reservas` still has 1 row (id=10, cliente_id=15); `pagos` is empty — verified live, repeatedly.
+New: `docs/migracion/generate-clientes-import.py` (644/650 lines, scope-limited exemption per
+amendment A), `docs/migracion/03-clientes-import-dry-run.sql` (sha256 `a5f74af3…42cc4`),
+`docs/migracion/04-clientes-import-execute.sql` (sha256 `9146d0d5…689b1`),
+`docs/migracion/README-clientes-import.md`. Edited: `docs/migracion/README-cleanup.md` (2-hunk
+stale-claim fix, T7). No schema/RLS/auth change (ADR 0011 unaffected — no table created).
+
+#### 2. Evidence (highest round per task)
+
+T1 PASS `reports/t01-{dev,qa,lead}.md` · T2 PASS r4 (3 send-backs) `reports/t02-{dev,qa,lead}-r4.md`
+· T3 PASS r3 (2 send-backs) `reports/t03-{dev,qa,lead}-r3.md` · T4 PASS r2 (1 architect escalation
+→ amendment A) `reports/t04-{dev,qa,lead}-r2.md` · T5 PASS `reports/t05-{dev,qa,lead}.md` · T6 PASS
+r3 (process incident, see below) `reports/t06-{dev,qa,lead}-r3.md` · T7 PASS r2 (1 send-back)
+`reports/t07-{dev,qa,lead}-r2.md` · T8 PASS `reports/t08-{dev,qa,lead}.md` · T9 PASS (human-
+authorized) `reports/t09-{dev,qa,lead}.md`. PROVEN: `03` 42/42 checks PASS live, PROCEED; guard
+byte-parity 42/42; determinism; 3 real guards fired live and observed to abort; read-only held
+throughout; `npm run qa` green 825/825. NOT PROVEN: `04` never executed end-to-end; only 2/42
+pre-write guards + 1/33 post-checks individually fired.
+
+#### 3. Incidents (recorded, not smoothed over)
+
+(a) 3 live-only SQL defects (`sql_identifier[]`/`text[]`; `NOT`/`::` precedence; NBSP/`btrim`) cost
+3 T2/T3 cycles — fixed by making a live full-file smoke gate mandatory before T2 submission. (b) T6
+duplicate-dispatch: the orchestrator read a stale round, dispatched a duplicate task, and the dev
+overwrote the approved `t06-dev-r2.md` (unrecoverable) — an orchestrator error, resolved forward via
+round 3. (c) Real client PII (2 cédulas + client emails) leaked into 12 report files (T1–T6) because
+the orchestrator's own delegation prompts declared them "pre-cleared as non-secret"; found by T8,
+redacted in T9 (human-authorized). PII remains, by design, inside the two hash-pinned `.sql`
+payload files and in some SQL check-name identifiers there.
+
+#### 4. Deferred / follow-ups
+
+Dangling `cambios_provisionales` row id=69 (PENDIENTE, references registro_id=15, will point at a
+different client post-relocation); `03`'s cosmetic header staleness; 644 problem emails (599
+placeholder + 45 malformed) that will trip the edit form's validation after import; outstanding
+Supabase credential rotation (pre-existing, unrelated, largest standing repo risk); **this state
+file's own staleness**, now partially addressed by this entry but the missing
+`db-cleanup-decisions-amend` sprint entry still needs backfilling.
+
+#### 5. Rollback path
+
+Nothing was written to the database — no DB rollback needed. Repo rollback: delete the four new
+`docs/migracion/*` files listed in §1 and restore `README-cleanup.md`'s two hunks from
+`reports/t07-dev-r2.md`'s quoted original text (no destructive git operation needed or used — every
+sprint file is untracked `??`).
+
+Full summary: `docs/sprints/2026-09-22-clientes-xlsx-import/summary.md`
+
+---
+
 ## Remaining backlog (highest priority first)
 
 _(see docs/plans/: feature-audit-sprint, module-audit-polish, crm-reservas-fixes,
@@ -1102,4 +1166,9 @@ combined gate), HARD CALL C (comprobantes stub's one link to the live registrar 
 still owed a ruling), `[[relocated-coverage-gap]]`'s partial closure (B-23 still the
 standing blocker), the new AST-pass backlog item (after B-33), and the delete-
 lib/admin-actions.ts / real-BUILD-for-colaboradores-etc. / route-level-admin-gating
-items carried forward from that sprint.)_
+items carried forward from that sprint. See the 2026-09-22 clientes-xlsx-import entry
+above for: the import artifact set is built and live-proven but the real COMMIT is still
+a human-owed action; the dangling cambios_provisionales id=69 relocation; the 644
+problem-email backlog that will surface at the edit form once imported; the still-open
+credential-rotation risk; and this state file's own missing db-cleanup-decisions-amend
+entry, needing backfill.)_

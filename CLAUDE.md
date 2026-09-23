@@ -13,11 +13,38 @@ This project is built by KuboTI's engineering team and shares its brain (**CBrai
 
 ---
 
+## Project contract (the agents read this block — keep it accurate)
+
+| Key | Value |
+|---|---|
+| Brain slug | `elibry` (names `projects/elibry.md` and `sprints/elibry-*.md`) |
+| Stack | Next.js 14.2 (App Router), React 19, TypeScript 5.7, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL via PostgREST) |
+| QA gate | `npm run qa` |
+| Typecheck | `npm run typecheck` |
+| Lint | `npm run lint` |
+| Tests | `npm run test` |
+| Plans directory | `docs/plans/` |
+| Sprint state file | `MEMORY/project_sprint_state.md` |
+| Data isolation model | single-tenant, none — no authentication and no RLS on the ~29 pre-existing tables incl. `clientes`; browser queries run as PostgREST `anon` (ADR 0011) |
+| State-mutation pattern | server-authoritative via the Supabase client; non-admin writes go through the provisional-record workflow in `lib/provisional-system.ts` |
+| Realtime | no |
+| File-size limit | 500 lines (see `.claude/rules/file-size.md`) |
+| Sprint working dir | `docs/sprints/<YYYY-MM-DD>-<slug>/` — `scratchpad.md` (shared working memory, burned at close) + `reports/` (full per-task evidence files) |
+| Context budget | `.claude/rules/context-budget.md` — CLAUDE.md ≤500 lines; state-file entry ≤80; CLAUDE.md close delta within ±15; scratchpad handoff ≤40 |
+| Sprint loop | `/sprint` spawns ONE fresh `task-runner` per task (dev→QA→lead→route dies with it); orchestrator verifies each task against the qa report file (Step 3c). `/sprint-resume <dir>` rebuilds an interrupted sprint from the ledger |
+
+## Current state (as of 2026-09-23)
+
+- **`clientes` import: artifacts ready, NOT executed.** `docs/migracion/` holds the verified set — `generate-clientes-import.py`, `03-clientes-import-dry-run.sql`, `04-clientes-import-execute.sql`, `README-clientes-import.md`. The dry run passed live; `04` has never been run end-to-end. The database still holds **1 `clientes` row**. Executing it is a pending **human** action — read `README-clientes-import.md` first.
+- **The live Supabase database IS reachable.** This supersedes the earlier recorded belief that the credentials were dead / the host returned 521; `docs/migracion/README-cleanup.md` was corrected accordingly (T7).
+- **File-size exemption:** `docs/migracion/generate-clientes-import.py` may run to ≤650 lines (Amendment A). Scope-limited to that one path and **non-precedential** — do not "fix" its length, and do not cite it for any other file.
+- **Canonical detail** lives in `MEMORY/project_sprint_state.md` and `docs/sprints/2026-09-22-clientes-xlsx-import/`, never in this file.
+
 ## Project Description: Sistema de Gestión Empresarial (Enterprise Management System)
 
 ### Overview
 
-This is a comprehensive **travel agency / tour operator management system** built with Next.js 15, React, TypeScript, Tailwind CSS, and Supabase. The system manages the complete business workflow from client registration through reservations, payments, and invoicing.
+This is a comprehensive **travel agency / tour operator management system** built with Next.js 14.2, React, TypeScript, Tailwind CSS, and Supabase. The system manages the complete business workflow from client registration through reservations, payments, and invoicing.
 
 ---
 
@@ -176,7 +203,7 @@ This is a comprehensive **travel agency / tour operator management system** buil
 
 ### Technical Stack
 
-- **Frontend**: Next.js 15 (App Router), React 19, TypeScript
+- **Frontend**: Next.js 14.2 (App Router), React 19, TypeScript
 - **UI**: Tailwind CSS, shadcn/ui components
 - **Database**: Supabase (PostgreSQL)
 - **State**: React useState/useEffect, SWR for data fetching
